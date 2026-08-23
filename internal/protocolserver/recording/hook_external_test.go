@@ -196,11 +196,18 @@ func TestAttachRecorderHooks_ErrorPath(t *testing.T) {
 	)
 	assert.ErrorIs(t, err, streamErr)
 
+	// RecordError only annotates (the stream failure may be retried by
+	// failover); the record reaches the sink via the orchestrator's
+	// FinalizeIfPending. Nothing must be emitted before that.
+	require.NoError(t, sink.ForceFlush(recordingtest.CtxWithTimeout(t)))
+	require.Empty(t, mem.Snapshot(), "RecordError must not emit — the orchestrator finalizes")
+
+	recorder.FinalizeIfPending()
 	require.NoError(t, sink.ForceFlush(recordingtest.CtxWithTimeout(t)))
 
 	records := mem.Snapshot()
-	require.Len(t, records, 1, "exactly one error record must be emitted")
-	assert.NotEmpty(t, records[0].Err, "record.Err must be populated on stream error")
+	require.Len(t, records, 1, "exactly one error record must be emitted at finalize")
+	assert.NotEmpty(t, records[0].Err, "record.Err must carry the annotated stream error")
 	assert.Nil(t, records[0].FinalResponse, "no FinalResponse on error path")
 }
 
