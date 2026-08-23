@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -164,9 +165,14 @@ func (s *Server) sinkOpts() []obs.SinkOption {
 	return opts
 }
 
-// GetOrCreateScenarioSink gets or creates a recording sink for the specified scenario
-// The sink is created on-demand and cached for subsequent use
-func (s *Server) GetOrCreateScenarioSink(scenario typ.RuleScenario) *obs.Sink {
+// GetOrCreateScenarioSink gets or creates a recording sink for the specified
+// scenario. The sink is created on-demand and cached for subsequent use.
+// mode is the request's effective recording selection (rule override or
+// scenario default, already resolved by the caller) — passing it in lets a
+// rule-level recording flag create the sink even when the scenario-level
+// flag is off. Per-request capture-point filtering happens in the recorder,
+// not here; the sink just needs to exist.
+func (s *Server) GetOrCreateScenarioSink(scenario typ.RuleScenario, mode obs.RecordMode) *obs.Sink {
 	s.scenarioRecordSinksMu.Lock()
 	defer s.scenarioRecordSinksMu.Unlock()
 
@@ -175,14 +181,10 @@ func (s *Server) GetOrCreateScenarioSink(scenario typ.RuleScenario) *obs.Sink {
 		return sink
 	}
 
-	mode := s.GetScenarioRecordMode(scenario)
-	if mode == "" {
+	if !typ.RecordingMode(mode).Enabled() {
 		return nil
 	}
 
-	// Create new sink for this scenario using the scenario-effective recording mode.
-	// This allows `recording_v2` on individual scenarios such as `claude_code`
-	// even when global CLI record mode is unset.
 	sink := obs.NewSink(s.recordDir, mode, s.sinkOpts()...)
 	if sink == nil {
 		// Sink creation failed or recording is disabled (empty recordDir)
@@ -196,18 +198,23 @@ func (s *Server) GetOrCreateScenarioSink(scenario typ.RuleScenario) *obs.Sink {
 	return sink
 }
 
-// GetScenarioRecordMode resolves the effective recording mode for a scenario.
-// The scenario-level recording_v2 flag is the only source; there is no global
-// CLI record mode any more (see .design/recording.md — enablement is a flag
-// concern, and a rule-level flag joins in Phase 2).
-func (s *Server) GetScenarioRecordMode(scenario typ.RuleScenario) obs.RecordMode {
-	if s == nil || s.config == nil {
-		return ""
+// FlushScenarioRecordSinks force-flushes every scenario recording sink's
+// batch pipeline so buffered records reach their exporters immediately.
+// Recording is asynchronous by design (non-blocking Emit + 5s batch flush);
+// this is for callers that need the records on disk now — tests, debug
+// endpoints, graceful drains.
+func (s *Server) FlushScenarioRecordSinks(ctx context.Context) {
+	s.scenarioRecordSinksMu.RLock()
+	sinks := make([]*obs.Sink, 0, len(s.scenarioRecordSinks))
+	for _, sink := range s.scenarioRecordSinks {
+		sinks = append(sinks, sink)
 	}
-	if mode := s.config.GetScenarioRecordingMode(scenario); mode != typ.RecordingModeDisabled {
-		return obs.RecordMode(mode)
+	s.scenarioRecordSinksMu.RUnlock()
+	for _, sink := range sinks {
+		if err := sink.ForceFlush(ctx); err != nil {
+			logrus.Debugf("obs: force flush scenario sink: %v", err)
+		}
 	}
-	return ""
 }
 
 // EnsureProtocolRecorder delegates to the AI Model API handler, which owns

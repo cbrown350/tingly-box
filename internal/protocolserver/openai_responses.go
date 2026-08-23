@@ -11,7 +11,9 @@ import (
 
 	"github.com/tingly-dev/tingly-box/internal/constant"
 	"github.com/tingly-dev/tingly-box/internal/loadbalance"
+	"github.com/tingly-dev/tingly-box/internal/obs"
 	"github.com/tingly-dev/tingly-box/internal/protocol"
+	"github.com/tingly-dev/tingly-box/internal/protocolserver/recording"
 	"github.com/tingly-dev/tingly-box/internal/typ"
 )
 
@@ -165,6 +167,19 @@ func (ph *ProtocolHandler) ResponsesCreate(c *gin.Context, scenarioType typ.Rule
 	scenarioConfig := ph.deps.Config.GetScenarioConfig(scenarioType)
 	actualModel := string(req.Model)
 
+	// Get or create the recorder (pristine request body), mirroring the
+	// Anthropic entry points. Enablement is the effective capture-point
+	// selection: the rule's recording flag overrides the scenario-level
+	// recording_v2 default.
+	var recorder *recording.ProtocolRecorder
+	if recMode := typ.EffectiveRecording(rule, scenarioConfig); recMode.Enabled() {
+		bs, err := json.Marshal(req.ResponseNewParams)
+		if err != nil {
+			bs = []byte("{}")
+		}
+		recorder = ph.EnsureProtocolRecorder(c, string(scenarioType), provider, actualModel, obs.RecordMode(recMode), bs)
+	}
+
 	// Snapshot a pristine template only when failover is possible. The template
 	// is the typed ResponseNewParams (post-vision-proxy — cloned per attempt so
 	// PreprocessInputData and vision proxy are not re-run).
@@ -182,14 +197,14 @@ func (ph *ProtocolHandler) ResponsesCreate(c *gin.Context, scenarioType typ.Rule
 				}
 				areq.ResponseNewParams = clonedParams
 			}
-			ph.runOpenAIResponsesAttempt(c, areq, p, retryModel, rule, isStreaming, scenarioType, scenarioConfig)
+			ph.runOpenAIResponsesAttempt(c, areq, p, retryModel, rule, isStreaming, scenarioType, scenarioConfig, recorder)
 		})
 }
 
 // runOpenAIResponsesAttempt executes the provider-dependent half of an OpenAI
 // Responses request for one failover attempt. Setup failures route through
 // failAttemptSetup so the orchestrator can advance to the next candidate.
-func (ph *ProtocolHandler) runOpenAIResponsesAttempt(c *gin.Context, req *protocol.ResponseCreateRequest, provider *typ.Provider, actualModel string, rule *typ.Rule, isStreaming bool, scenarioType typ.RuleScenario, scenarioConfig *typ.ScenarioConfig) {
+func (ph *ProtocolHandler) runOpenAIResponsesAttempt(c *gin.Context, req *protocol.ResponseCreateRequest, provider *typ.Provider, actualModel string, rule *typ.Rule, isStreaming bool, scenarioType typ.RuleScenario, scenarioConfig *typ.ScenarioConfig, recorder *recording.ProtocolRecorder) {
 	// Resolve dual endpoint: when the provider has an OpenAI-compatible
 	// dual URL configured, route there natively to avoid a transform.
 	provider = provider.ResolveStyle(protocol.APIStyleOpenAI)
@@ -224,7 +239,7 @@ func (ph *ProtocolHandler) runOpenAIResponsesAttempt(c *gin.Context, req *protoc
 	// Resolve flags with scenario injection, consistent with the chat/v1/beta
 	// handlers (this also applies the custom User-Agent to the request context).
 	ruleFlags := ResolveRuleFlagsWithScenario(c, rule, scenarioType, scenarioConfig, protocol.TypeOpenAIResponses, target, provider)
-	reqCtx, err := ph.TransformOpenAIResponses(c, req, target, provider, isStreaming, nil, scenarioType, maxAllowed, RulePreBaseTransforms(ruleFlags), RulePreVendorTransforms(ruleFlags))
+	reqCtx, err := ph.TransformOpenAIResponses(c, req, target, provider, isStreaming, recorder, scenarioType, maxAllowed, RulePreBaseTransforms(ruleFlags), RulePreVendorTransforms(ruleFlags))
 	if err != nil {
 		ph.FailAttemptSetup(c, fmt.Errorf("Transform failed: %w", err))
 		return
@@ -237,7 +252,7 @@ func (ph *ProtocolHandler) runOpenAIResponsesAttempt(c *gin.Context, req *protoc
 	reqCtx.Extra["skip_usage"] = ruleFlags.SkipUsage
 
 	reqCtx.RequestModel = actualModel
-	ph.DispatchChainResult(c, reqCtx, rule, provider, isStreaming, nil)
+	ph.DispatchChainResult(c, reqCtx, rule, provider, isStreaming, recorder)
 }
 
 // convertToResponsesParams converts raw JSON to OpenAI SDK params format

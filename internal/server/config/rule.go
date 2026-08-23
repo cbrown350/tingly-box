@@ -77,6 +77,9 @@ func (c *Config) AddRule(rule typ.Rule) error {
 	if err := validateRuleExtraHeaders(&rule); err != nil {
 		return err
 	}
+	if err := validateAndNormalizeRuleRecording(&rule); err != nil {
+		return err
+	}
 
 	normalizeRuleServiceTiers(&rule)
 
@@ -119,6 +122,9 @@ func (c *Config) UpdateRule(uid string, rule typ.Rule) error {
 		return err
 	}
 	if err := validateRuleExtraHeaders(&rule); err != nil {
+		return err
+	}
+	if err := validateAndNormalizeRuleRecording(&rule); err != nil {
 		return err
 	}
 
@@ -635,5 +641,17 @@ func (c *Config) validateRuleServices(rule typ.Rule, existing *typ.Rule) error {
 		}
 	}
 
+	return nil
+}
+
+// validateAndNormalizeRuleRecording rejects unknown capture points in the
+// rule's recording flag at the write boundary (ParseRecordingMode would
+// silently drop them), then stores the normalized point set so legacy values
+// converge on the point-set form.
+func validateAndNormalizeRuleRecording(rule *typ.Rule) error {
+	if !typ.IsValidRecordingMode(rule.Flags.Recording) {
+		return fmt.Errorf("invalid recording value: %s (must be empty or a comma-separated set of capture points client_request/upstream_request/upstream_response/client_response)", rule.Flags.Recording)
+	}
+	rule.Flags.Recording = string(typ.ParseRecordingMode(rule.Flags.Recording))
 	return nil
 }

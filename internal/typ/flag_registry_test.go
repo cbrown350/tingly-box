@@ -74,6 +74,7 @@ func TestRuleFlagRegistry_TypesAreValid(t *testing.T) {
 		FlagTypeInt:        true,
 		FlagTypeServiceRef: true,
 		FlagTypeHeaders:    true,
+		FlagTypeMultiEnum:  true,
 	}
 	for _, spec := range RuleFlagRegistry() {
 		if !allowed[spec.Type] {
@@ -112,6 +113,58 @@ func TestRuleFlagRegistry_EnumOptions(t *testing.T) {
 				t.Errorf("enum flag %q has duplicate option Value %q", spec.Key, opt.Value)
 			}
 			seen[opt.Value] = true
+		}
+	}
+}
+
+// TestRuleFlagRegistry_MultiEnumOptions asserts that every FlagTypeMultiEnum
+// spec declares at least two options with non-empty, unique, non-empty-valued
+// entries. Unlike enum there is no inactive-sentinel first option — the empty
+// set is the inactive state, so every option must carry a concrete value.
+func TestRuleFlagRegistry_MultiEnumOptions(t *testing.T) {
+	for _, spec := range RuleFlagRegistry() {
+		if spec.Type != FlagTypeMultiEnum {
+			continue
+		}
+		if len(spec.Options) < 2 {
+			t.Errorf("multi_enum flag %q has %d options, expected at least 2", spec.Key, len(spec.Options))
+		}
+		seen := map[string]bool{}
+		for i, opt := range spec.Options {
+			if opt.Value == "" {
+				t.Errorf("multi_enum flag %q option %d has empty Value", spec.Key, i)
+			}
+			if opt.Label == "" {
+				t.Errorf("multi_enum flag %q option %d has empty Label", spec.Key, i)
+			}
+			if seen[opt.Value] {
+				t.Errorf("multi_enum flag %q has duplicate option Value %q", spec.Key, opt.Value)
+			}
+			seen[opt.Value] = true
+		}
+	}
+}
+
+// TestRuleFlagRegistry_RecordingOptionsAreValidPoints pins the recording
+// flag's options to the typ.RecordingPoint value domain, so the registry and
+// ParseRecordingMode can never drift apart.
+func TestRuleFlagRegistry_RecordingOptionsAreValidPoints(t *testing.T) {
+	var found *FlagSpec
+	for i, s := range RuleFlagRegistry() {
+		if s.Key == "recording" {
+			found = &RuleFlagRegistry()[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("recording missing from registry")
+	}
+	if found.Type != FlagTypeMultiEnum {
+		t.Fatalf("recording type = %q, want %q", found.Type, FlagTypeMultiEnum)
+	}
+	for _, opt := range found.Options {
+		if !IsValidRecordingMode(opt.Value) {
+			t.Errorf("recording option %q is not a valid RecordingPoint", opt.Value)
 		}
 	}
 }

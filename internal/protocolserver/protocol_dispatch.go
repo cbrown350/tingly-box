@@ -605,7 +605,7 @@ func (ph *ProtocolHandler) dispatchOpenAIChat(
 				return
 			}
 
-			ph.streamOpenAIChat(c, provider, req, responseModel, disableStreamUsage)
+			ph.streamOpenAIChat(c, provider, req, responseModel, disableStreamUsage, recorder)
 		case protocol.TypeOpenAIResponses:
 			ph.streamOpenAIChatToResponses(c, reqCtx, provider, recorder)
 		}
@@ -620,7 +620,7 @@ func (ph *ProtocolHandler) dispatchOpenAIChat(
 				return
 			}
 
-			ph.nonstreamOpenAIChat(c, provider, req, responseModel, stripUsage)
+			ph.nonstreamOpenAIChat(c, provider, req, responseModel, stripUsage, recorder)
 			return
 		case protocol.TypeOpenAIResponses:
 			ph.nonstreamOpenAIChatToResponses(c, reqCtx, provider, recorder)

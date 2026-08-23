@@ -1,12 +1,15 @@
 import {
     Box,
     Button,
+    Checkbox,
     Chip,
     Dialog,
     DialogActions,
     DialogContent,
     DialogTitle,
     FormControl,
+    FormControlLabel,
+    FormGroup,
     InputLabel,
     MenuItem,
     Select,
@@ -18,6 +21,7 @@ import {
 import {
     Close as CloseIcon,
     Extension as ExtensionIcon,
+    FiberManualRecord as RecordIcon,
     Input as InputIcon,
     Link as LinkIcon,
     Output as OutputIcon,
@@ -30,7 +34,7 @@ import type { FlagSpec, RuleFlags, VisionProxyServiceRef } from '@/components/Ro
 import type { Provider } from '@/types/provider';
 import type { ProviderSelectTabOption } from '@/components/ModelSelectDialog';
 import ModelSelectDialog from '@/components/ModelSelectDialog';
-import { getFlagValue, setFlagValue, flagDefault, enumInactive, isFlagActive, normalizeEnumForStorage, headersValue } from './flagHelpers';
+import { getFlagValue, setFlagValue, flagDefault, enumInactive, isFlagActive, normalizeEnumForStorage, headersValue, multiEnumValues, toggleMultiEnumValue } from './flagHelpers';
 import HeadersEditor from '@/components/flags/HeadersEditor';
 
 export interface FlagCatalogDialogProps {
@@ -62,7 +66,7 @@ interface CategoryMeta {
 }
 
 // Display order for the category sidebar. Unknown categories are appended.
-const CATEGORY_ORDER = ['app', 'request', 'request_openai', 'request_anthropic', 'response', 'reasoning', 'vision', 'routing'];
+const CATEGORY_ORDER = ['app', 'request', 'request_openai', 'request_anthropic', 'response', 'reasoning', 'vision', 'observability', 'routing'];
 
 const CATEGORY_META: Record<string, CategoryMeta> = {
     app:               { label: 'App',         icon: <TerminalIcon   fontSize="small" /> },
@@ -73,6 +77,7 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
     reasoning:         { label: 'Reasoning',   icon: <PsychologyIcon fontSize="small" /> },
     vision:            { label: 'Vision',      icon: <VisibilityIcon fontSize="small" /> },
     routing:           { label: 'Routing',     icon: <LinkIcon       fontSize="small" /> },
+    observability:     { label: 'Observe',     icon: <RecordIcon     fontSize="small" /> },
 };
 
 const categoryMeta = (category: string): CategoryMeta => CATEGORY_META[category] ?? {
@@ -439,6 +444,30 @@ export const FlagCatalogDialog: React.FC<FlagCatalogDialogProps> = ({
                                                             )}
                                                         </Select>
                                                     </FormControl>
+                                                )}
+                                                {spec.type === 'multi_enum' && (
+                                                    <FormGroup sx={{ mt: 0.5 }}>
+                                                        {(spec.options || []).map((opt) => {
+                                                            const selected = multiEnumValues(draft, spec.key).includes(opt.value);
+                                                            return (
+                                                                <FormControlLabel
+                                                                    key={opt.value}
+                                                                    control={
+                                                                        <Checkbox
+                                                                            size="small"
+                                                                            checked={selected}
+                                                                            onChange={() => setDraft((d) => setFlagValue(
+                                                                                d,
+                                                                                spec.key,
+                                                                                toggleMultiEnumValue(getFlagValue(d, spec.key) as string | undefined, opt.value),
+                                                                            ))}
+                                                                        />
+                                                                    }
+                                                                    label={<Typography variant="body2">{opt.label}</Typography>}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </FormGroup>
                                                 )}
                                                 {spec.type === 'headers' && (
                                                     <Box sx={{ mt: 1 }}>
