@@ -1,19 +1,18 @@
-// Package apitoken implements CRUD HTTP endpoints for shared API tokens.
-// It is intentionally free of any internal/server import — all error
-// responses are written inline so the package has no circular dependency.
+// Package sharing implements CRUD HTTP endpoints for shared API tokens.
+// It is intentionally free of any internal/server import — error responses
+// go through the shared internal/apierr package.
 package sharing
 
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	"github.com/tingly-dev/tingly-box/internal/db"
 )
 
@@ -30,29 +29,6 @@ func NewHandler(store *db.APITokenStore) *Handler {
 }
 
 // --- helpers ----------------------------------------------------------------
-
-func sendError(c *gin.Context, status int, err error, errType string) {
-	c.JSON(status, gin.H{
-		"error": gin.H{
-			"message": err.Error(),
-			"type":    errType,
-		},
-	})
-}
-
-func sendStoreError(c *gin.Context, err error) {
-	status := http.StatusBadRequest
-	errType := "invalid_request_error"
-	message := strings.ToLower(err.Error())
-	if strings.Contains(message, "not found") {
-		status = http.StatusNotFound
-		errType = "not_found_error"
-	} else if strings.Contains(message, "disabled") {
-		status = http.StatusConflict
-		errType = "conflict_error"
-	}
-	sendError(c, status, err, errType)
-}
 
 func recordToInfo(r *db.APITokenRecord) APITokenInfo {
 	return APITokenInfo{
@@ -81,7 +57,7 @@ func generateRandomToken() (string, error) {
 func (h *Handler) Create(c *gin.Context) {
 	var req TokenCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		sendError(c, http.StatusBadRequest, err, "invalid_request_error")
+		apierr.SendBadRequest(c, err)
 		return
 	}
 
@@ -90,7 +66,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	randomToken, err := generateRandomToken()
 	if err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to generate token: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to generate token: "+err.Error())
 		return
 	}
 	tokenString := "tb-share-" + randomToken
@@ -101,7 +77,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	record, err := h.store.CreateTokenForTeam(userUUID, tokenString, teamID, req.DisplayName, "admin", nil)
 	if err != nil {
-		sendStoreError(c, err)
+		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
 		return
 	}
 
@@ -143,7 +119,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	records, total, err := h.store.ListTokensForTeam(userUUID, teamID, enabled, limit, offset)
 	if err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to list tokens: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to list tokens: "+err.Error())
 		return
 	}
 
@@ -158,21 +134,21 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) MoveToTeam(c *gin.Context) {
 	tokenID := c.Param("token_id")
 	if tokenID == "" {
-		sendError(c, http.StatusBadRequest, errors.New("token_id is required"), "invalid_request_error")
+		apierr.SendRequired(c, "token_id")
 		return
 	}
 	var req TokenMoveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		sendError(c, http.StatusBadRequest, err, "invalid_request_error")
+		apierr.SendBadRequest(c, err)
 		return
 	}
 	if err := h.store.MoveTokenToTeam(tokenID, req.TeamID); err != nil {
-		sendStoreError(c, err)
+		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
 		return
 	}
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		sendError(c, http.StatusNotFound, err, "not_found_error")
+		apierr.SendNotFound(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, recordToInfo(record))
@@ -182,13 +158,13 @@ func (h *Handler) MoveToTeam(c *gin.Context) {
 func (h *Handler) Get(c *gin.Context) {
 	tokenID := c.Param("token_id")
 	if tokenID == "" {
-		sendError(c, http.StatusBadRequest, errors.New("token_id is required"), "invalid_request_error")
+		apierr.SendRequired(c, "token_id")
 		return
 	}
 
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		sendError(c, http.StatusNotFound, errors.New("token not found"), "not_found_error")
+		apierr.SendNotFoundMsg(c, "token not found")
 		return
 	}
 
@@ -199,12 +175,12 @@ func (h *Handler) Get(c *gin.Context) {
 func (h *Handler) Delete(c *gin.Context) {
 	tokenID := c.Param("token_id")
 	if tokenID == "" {
-		sendError(c, http.StatusBadRequest, errors.New("token_id is required"), "invalid_request_error")
+		apierr.SendRequired(c, "token_id")
 		return
 	}
 
 	if err := h.store.DeleteToken(tokenID); err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to delete token: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to delete token: "+err.Error())
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -223,7 +199,7 @@ func (h *Handler) Disable(c *gin.Context) {
 func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 	tokenID := c.Param("token_id")
 	if tokenID == "" {
-		sendError(c, http.StatusBadRequest, errors.New("token_id is required"), "invalid_request_error")
+		apierr.SendRequired(c, "token_id")
 		return
 	}
 
@@ -232,7 +208,7 @@ func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 		action = "enable"
 	}
 	if err := h.store.SetTokenEnabled(tokenID, enabled); err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to "+action+" token: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to "+action+" token: "+err.Error())
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -243,25 +219,25 @@ func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 func (h *Handler) Regenerate(c *gin.Context) {
 	tokenID := c.Param("token_id")
 	if tokenID == "" {
-		sendError(c, http.StatusBadRequest, errors.New("token_id is required"), "invalid_request_error")
+		apierr.SendRequired(c, "token_id")
 		return
 	}
 
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		sendError(c, http.StatusNotFound, errors.New("token not found"), "not_found_error")
+		apierr.SendNotFoundMsg(c, "token not found")
 		return
 	}
 
 	randomToken, err := generateRandomToken()
 	if err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to generate token: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to generate token: "+err.Error())
 		return
 	}
 	newTokenString := "tb-share-" + randomToken
 
 	if err := h.store.UpdateTokenString(tokenID, newTokenString); err != nil {
-		sendError(c, http.StatusInternalServerError, errors.New("failed to regenerate token: "+err.Error()), "internal_error")
+		apierr.SendInternalMsg(c, "failed to regenerate token: "+err.Error())
 		return
 	}
 

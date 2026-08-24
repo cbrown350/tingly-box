@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	guardrailscore "github.com/tingly-dev/tingly-box/internal/guardrails/core"
 )
 
@@ -244,17 +245,12 @@ func (hc *HandleContext) SendError(err error, errorType, code string) {
 	})
 }
 
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Error ErrorDetail `json:"error"`
-}
-
-// ErrorDetail represents error details
-type ErrorDetail struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-	Code    string `json:"code,omitempty"`
-}
+// ErrorResponse / ErrorDetail are the shared wire shapes from
+// internal/apierr, re-exported for the protocol layer's call sites.
+type (
+	ErrorResponse = apierr.ErrorResponse
+	ErrorDetail   = apierr.ErrorDetail
+)
 
 // IsContextCanceled checks if the error is due to context cancellation.
 func IsContextCanceled(err error) bool {

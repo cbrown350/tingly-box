@@ -6,22 +6,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	"github.com/tingly-dev/tingly-box/internal/protocol"
 	"github.com/tingly-dev/tingly-box/internal/protocol/stream"
 	"github.com/tingly-dev/tingly-box/internal/protocolserver/recording"
 )
 
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Error ErrorDetail `json:"error"`
-}
-
-// ErrorDetail represents error details
-type ErrorDetail struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-	Code    string `json:"code,omitempty"`
-}
+// ErrorResponse / ErrorDetail are the shared wire shapes from
+// internal/apierr, re-exported for this package's many construction sites.
+type (
+	ErrorResponse = apierr.ErrorResponse
+	ErrorDetail   = apierr.ErrorDetail
+)
 
 // ProbeSyntheticRuleUUID marks the throwaway rule built for an
 // X-Tingly-Probe-Service request — it has no persisted identity. Owned here

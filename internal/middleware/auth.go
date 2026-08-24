@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	"github.com/tingly-dev/tingly-box/internal/constant"
 	"github.com/tingly-dev/tingly-box/internal/db"
 	"github.com/tingly-dev/tingly-box/internal/server/config"
@@ -31,33 +32,6 @@ type AuthMiddleware struct {
 type APITokenStore interface {
 	ValidateToken(tokenID string) (*db.APITokenRecord, error)
 	UpdateLastUsed(tokenID string) error
-}
-
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Error ErrorDetail `json:"error"`
-}
-
-// abortWithError sends an error response and adds the error to gin context for logging
-func abortWithError(c *gin.Context, statusCode int, message string, errorType string) {
-	// Add error to context so logging middleware can capture it
-	c.Error(fmt.Errorf("%s: %s", errorType, message)).SetType(gin.ErrorTypePublic)
-
-	// Send JSON response
-	c.JSON(statusCode, ErrorResponse{
-		Error: ErrorDetail{
-			Message: message,
-			Type:    errorType,
-		},
-	})
-	c.Abort()
-}
-
-// ErrorDetail represents error details
-type ErrorDetail struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-	Code    string `json:"code,omitempty"`
 }
 
 // NewAuthMiddleware creates a new authentication middleware
@@ -253,14 +227,14 @@ func (am *AuthMiddleware) UserAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			abortWithError(c, http.StatusUnauthorized, "User authorization header required", "invalid_request_error")
+			apierr.Abort(c, http.StatusUnauthorized, "User authorization header required", apierr.TypeInvalidRequest)
 			return
 		}
 
 		// Extract token from "Bearer <token>" format
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			abortWithError(c, http.StatusUnauthorized, "Invalid user authorization header format. Expected: 'Bearer <token>'", "invalid_request_error")
+			apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization header format. Expected: 'Bearer <token>'", apierr.TypeInvalidRequest)
 			return
 		}
 
@@ -287,7 +261,7 @@ func (am *AuthMiddleware) UserAuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		abortWithError(c, http.StatusUnauthorized, "Invalid user authorization token.", "invalid_request_error")
+		apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization token.", apierr.TypeInvalidRequest)
 	}
 }
 
@@ -302,7 +276,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		xApiKey := c.GetHeader("X-Api-Key")
 		if authHeader == "" && xApiKey == "" {
-			abortWithError(c, http.StatusUnauthorized, "Model authorization header required", "invalid_request_error")
+			apierr.Abort(c, http.StatusUnauthorized, "Model authorization header required", apierr.TypeInvalidRequest)
 			return
 		}
 
@@ -328,7 +302,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 				tokenRecord, validateErr := am.apiTokenStore.ValidateToken(token)
 				if validateErr == nil && tokenRecord != nil {
 					if tokenRecord.TeamID == "" {
-						abortWithError(c, http.StatusUnauthorized, "Sharing key has no team binding", "invalid_token_error")
+						apierr.Abort(c, http.StatusUnauthorized, "Sharing key has no team binding", "invalid_token_error")
 						return
 					}
 					// A sharing key is a team-scoped model credential, not a
@@ -337,7 +311,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 					// surfaces fail closed and a client cannot select a suffix
 					// such as team:<other-scope>.
 					if !sharingKeyCanAccessModelSurface(c) {
-						abortWithError(c, http.StatusForbidden, "Sharing key is restricted to the team model endpoint", "forbidden_error")
+						apierr.Abort(c, http.StatusForbidden, "Sharing key is restricted to the team model endpoint", "forbidden_error")
 						return
 					}
 
@@ -357,13 +331,13 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 
 		// Check global config model token (backward compatibility)
 		if cfg == nil || !cfg.HasModelToken() {
-			abortWithError(c, http.StatusInternalServerError, "config or config model token missing", "invalid_request_error")
+			apierr.Abort(c, http.StatusInternalServerError, "config or config model token missing", apierr.TypeInvalidRequest)
 			return
 		}
 
 		// If global token is disabled and multi-tenant is enabled, reject
 		if cfg.IsMultiTenantEnabled() && cfg.IsGlobalTokenDisabled() {
-			abortWithError(c, http.StatusUnauthorized, "Global token disabled, use API token", "invalid_token_error")
+			apierr.Abort(c, http.StatusUnauthorized, "Global token disabled, use API token", "invalid_token_error")
 			return
 		}
 
@@ -379,7 +353,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 			if contextJWT != "" {
 				claims, verifyErr := verifyEnterpriseContextJWT(cfg, contextJWT)
 				if verifyErr != nil {
-					abortWithError(c, http.StatusUnauthorized, "Invalid enterprise context jwt", "invalid_request_error")
+					apierr.Abort(c, http.StatusUnauthorized, "Invalid enterprise context jwt", apierr.TypeInvalidRequest)
 					return
 				}
 				if claims != nil {
@@ -401,11 +375,11 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 			requestToken = xApiKey
 		}
 		if strings.HasPrefix(strings.TrimSpace(requestToken), "sk-tbe-") {
-			abortWithError(c, http.StatusUnauthorized, "Virtual key must be used through TBE /tbe/* endpoints", "invalid_request_error")
+			apierr.Abort(c, http.StatusUnauthorized, "Virtual key must be used through TBE /tbe/* endpoints", apierr.TypeInvalidRequest)
 			return
 		}
 
-		abortWithError(c, http.StatusUnauthorized, "Invalid model authorization token.", "invalid_request_error")
+		apierr.Abort(c, http.StatusUnauthorized, "Invalid model authorization token.", apierr.TypeInvalidRequest)
 	}
 }
 

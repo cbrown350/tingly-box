@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	"github.com/tingly-dev/tingly-box/internal/probe"
 	"github.com/tingly-dev/tingly-box/internal/protocol"
 	"github.com/tingly-dev/tingly-box/internal/typ"
@@ -23,34 +24,25 @@ func NewHandler(e2e *probe.E2EProber, light *probe.LightProber) *Handler {
 	return &Handler{e2e: e2e, light: light}
 }
 
-// errorDetail mirrors the JSON shape of the server's global ErrorDetail so
-// the API contract is unchanged. Defined locally to keep this package free
-// of any internal/server import.
-type errorDetail struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-	Code    string `json:"code,omitempty"`
-}
-
 // E2EResponse is the JSON envelope returned by POST /probe.
 type E2EResponse struct {
-	Success bool           `json:"success"`
-	Error   *errorDetail   `json:"error,omitempty"`
-	Data    *probe.E2EData `json:"data,omitempty"`
+	Success bool                `json:"success"`
+	Error   *apierr.ErrorDetail `json:"error,omitempty"`
+	Data    *probe.E2EData      `json:"data,omitempty"`
 }
 
 // LightweightResponse is the JSON envelope returned by POST /probe/lightweight.
 type LightweightResponse struct {
 	Success bool                                `json:"success"`
-	Error   *errorDetail                        `json:"error,omitempty"`
+	Error   *apierr.ErrorDetail                 `json:"error,omitempty"`
 	Data    *probe.LightweightProbeResponseData `json:"data,omitempty"`
 }
 
 // CurlResponse is the JSON envelope returned by POST /probe/curl.
 type CurlResponse struct {
-	Success bool            `json:"success"`
-	Error   *errorDetail    `json:"error,omitempty"`
-	Data    *probe.CurlData `json:"data,omitempty"`
+	Success bool                `json:"success"`
+	Error   *apierr.ErrorDetail `json:"error,omitempty"`
+	Data    *probe.CurlData     `json:"data,omitempty"`
 }
 
 // HandleE2EProbe handles SDK-level end-to-end probes (unified endpoint for
@@ -60,9 +52,9 @@ func (h *Handler) HandleE2EProbe(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, E2EResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: "Invalid request body: " + err.Error(),
-				Type:    "invalid_request_error",
+				Type:    apierr.TypeInvalidRequest,
 			},
 		})
 		return
@@ -71,9 +63,9 @@ func (h *Handler) HandleE2EProbe(c *gin.Context) {
 	if err := probe.ValidateE2ERequest(&req); err != nil {
 		c.JSON(http.StatusBadRequest, E2EResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: err.Error(),
-				Type:    "validation_error",
+				Type:    apierr.TypeValidation,
 			},
 		})
 		return
@@ -89,7 +81,7 @@ func (h *Handler) HandleE2EProbe(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, E2EResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: err.Error(),
 				Type:    "probe_error",
 			},
@@ -123,9 +115,9 @@ func (h *Handler) HandleCurlProbe(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, CurlResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: "Invalid request body: " + err.Error(),
-				Type:    "invalid_request_error",
+				Type:    apierr.TypeInvalidRequest,
 			},
 		})
 		return
@@ -134,9 +126,9 @@ func (h *Handler) HandleCurlProbe(c *gin.Context) {
 	if err := probe.ValidateE2ERequest(&req); err != nil {
 		c.JSON(http.StatusBadRequest, CurlResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: err.Error(),
-				Type:    "validation_error",
+				Type:    apierr.TypeValidation,
 			},
 		})
 		return
@@ -146,7 +138,7 @@ func (h *Handler) HandleCurlProbe(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, CurlResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: err.Error(),
 				Type:    "probe_error",
 			},
@@ -166,9 +158,9 @@ func (h *Handler) HandleLightweightProbe(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, LightweightResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: "Invalid request body: " + err.Error(),
-				Type:    "invalid_request_error",
+				Type:    apierr.TypeInvalidRequest,
 			},
 		})
 		return
@@ -177,9 +169,9 @@ func (h *Handler) HandleLightweightProbe(c *gin.Context) {
 	if req.APIBase == "" || req.APIStyle == "" || req.Token == "" {
 		c.JSON(http.StatusBadRequest, LightweightResponse{
 			Success: false,
-			Error: &errorDetail{
+			Error: &apierr.ErrorDetail{
 				Message: "api_base, api_style, and token are required",
-				Type:    "validation_error",
+				Type:    apierr.TypeValidation,
 			},
 		})
 		return

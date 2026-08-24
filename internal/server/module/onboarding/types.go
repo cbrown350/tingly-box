@@ -1,5 +1,7 @@
 package onboarding
 
+import "github.com/tingly-dev/tingly-box/internal/apierr"
+
 // TokenCandidate is a possible API token found in the input. The extractor
 // stays vendor-agnostic — it just reports what it saw and where it came
 // from. The user picks which one (if any) to use.
@@ -29,9 +31,6 @@ type ExtractResponse struct {
 	Error   *ErrorDetail `json:"error,omitempty"`
 }
 
-// ErrorDetail is a minimal error envelope. Kept local to the module so the
-// onboarding API does not depend on internal server types.
-type ErrorDetail struct {
-	Message string `json:"message"`
-	Type    string `json:"type,omitempty"`
-}
+// ErrorDetail is the shared error envelope from internal/apierr, re-exported
+// so this package's response models keep their swagger identity.
+type ErrorDetail = apierr.ErrorDetail

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	assets "github.com/tingly-dev/tingly-box/internal"
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 	"github.com/tingly-dev/tingly-box/internal/middleware"
 	"github.com/tingly-dev/tingly-box/internal/obs"
 	"github.com/tingly-dev/tingly-box/internal/server/config"
@@ -96,13 +97,11 @@ func UseWebStaticEndpoints(engine *gin.Engine) {
 		// Check if this looks like an API route
 		if path == "" || strings.HasPrefix(path, "/api/v") || strings.HasPrefix(path, "/v") || strings.HasPrefix(path, "/openai") || strings.HasPrefix(path, "/anthropic") || strings.HasPrefix(path, "/tingly") {
 			// This looks like an API route, return 404
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"message": "API endpoint not found",
-					"type":    "invalid_request_error",
-					"code":    "not_found",
-				},
-			})
+			c.JSON(http.StatusNotFound, apierr.ErrorResponse{Error: apierr.ErrorDetail{
+				Message: "API endpoint not found",
+				Type:    apierr.TypeInvalidRequest,
+				Code:    "not_found",
+			}})
 			c.Abort()
 		}
 	}, middleware.Gzip(), UseIndexHTML)

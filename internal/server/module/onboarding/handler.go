@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tingly-dev/tingly-box/internal/apierr"
 )
 
 // Handler serves the onboarding extraction endpoint.
@@ -32,7 +34,7 @@ func (h *Handler) Extract(c *gin.Context) {
 			Success: false,
 			Error: &ErrorDetail{
 				Message: "Invalid request body: " + err.Error(),
-				Type:    "invalid_request_error",
+				Type:    apierr.TypeInvalidRequest,
 			},
 		})
 		return
