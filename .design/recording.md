@@ -188,9 +188,10 @@ method/URL/body(header 本次刻意不采集,见 §3.7)。
   与 `thinking_effort` 同模式;解析点 `typ.EffectiveRecording(rule, scenario)`
   (handler prologue)与 `resolveRuleFlagsWithScenario`(ctx 传播)。
 - **过滤位置**:recorder 构造时归一化 mode,`emit()` 按 `Has(point)` 挑
-  字段;chain 的 StagePre/StagePost 分别按 `client_request` /
-  `upstream_request` 挂载(`recorder.Wants`,nil-safe)。obs 层不再校验
-  三档枚举,sink 只认"非空即启用"——mode 语义完全归 typ。
+  字段;`client_request` 挂链路层 StagePre,`upstream_request` 挂 client
+  层最内层 wire transport(Phase 3 迁移,见 §3.7;两者都靠 `recorder.Wants`
+  nil-safe 判定是否采集)。obs 层不再校验三档枚举,sink 只认"非空即
+  启用"——mode 语义完全归 typ。
 - **sink 归属**:仍按 scenario 建目录/缓存(`GetOrCreateScenarioSink`
   改为接收请求的 effective mode,rule 开、scenario 关也能建 sink);
   录多深由 recorder 按请求过滤,sink 自身 mode 仅剩创建信息。
@@ -386,8 +387,9 @@ Phase 1 与 Phase 2 互不依赖,可并行;Phase 3 依赖 Phase 2(recorder 的
 
 ## 7. 与现有文档的关系
 
-- `.design/rule-flags.md`:§12 的 scenario-only 表里 `recording_v2` 在
-  Phase 2 后升级为 shared flag,需同步更新该表与 §4 主表。
+- `.design/rule-flags.md`:`recording_v2` 已同步标注为升级到 shared flag
+  `recording`(共享表 + scenario-only 表),Phase 3 的挂载位置变更(链路层
+  StagePost → client 层 wire transport)也已同步进该文档的链路骨架描述。
 - `internal/obs/PLANNING.md`:record 采集/导出侧的权威规划;本文的
   Phase 4 即与其合流点。两文档口径一致:record 实体总是构建,裁剪在
   出口。
