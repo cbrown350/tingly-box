@@ -99,7 +99,7 @@ func UseWebStaticEndpoints(engine *gin.Engine) {
 			// This looks like an API route, return 404
 			c.JSON(http.StatusNotFound, apierr.ErrorResponse{Error: apierr.ErrorDetail{
 				Message: "API endpoint not found",
-				Type:    apierr.TypeInvalidRequest,
+				Type:    apierr.TypeNotFound,
 				Code:    "not_found",
 			}})
 			c.Abort()

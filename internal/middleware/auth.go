@@ -227,14 +227,14 @@ func (am *AuthMiddleware) UserAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			apierr.Abort(c, http.StatusUnauthorized, "User authorization header required", apierr.TypeInvalidRequest)
+			apierr.Abort(c, http.StatusUnauthorized, "User authorization header required", apierr.TypeAuthentication)
 			return
 		}
 
 		// Extract token from "Bearer <token>" format
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization header format. Expected: 'Bearer <token>'", apierr.TypeInvalidRequest)
+			apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization header format. Expected: 'Bearer <token>'", apierr.TypeAuthentication)
 			return
 		}
 
@@ -261,7 +261,7 @@ func (am *AuthMiddleware) UserAuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization token.", apierr.TypeInvalidRequest)
+		apierr.Abort(c, http.StatusUnauthorized, "Invalid user authorization token.", apierr.TypeAuthentication)
 	}
 }
 
@@ -276,7 +276,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		xApiKey := c.GetHeader("X-Api-Key")
 		if authHeader == "" && xApiKey == "" {
-			apierr.Abort(c, http.StatusUnauthorized, "Model authorization header required", apierr.TypeInvalidRequest)
+			apierr.Abort(c, http.StatusUnauthorized, "Model authorization header required", apierr.TypeAuthentication)
 			return
 		}
 
@@ -302,7 +302,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 				tokenRecord, validateErr := am.apiTokenStore.ValidateToken(token)
 				if validateErr == nil && tokenRecord != nil {
 					if tokenRecord.TeamID == "" {
-						apierr.Abort(c, http.StatusUnauthorized, "Sharing key has no team binding", "invalid_token_error")
+						apierr.Abort(c, http.StatusUnauthorized, "Sharing key has no team binding", apierr.TypeAuthentication)
 						return
 					}
 					// A sharing key is a team-scoped model credential, not a
@@ -311,7 +311,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 					// surfaces fail closed and a client cannot select a suffix
 					// such as team:<other-scope>.
 					if !sharingKeyCanAccessModelSurface(c) {
-						apierr.Abort(c, http.StatusForbidden, "Sharing key is restricted to the team model endpoint", "forbidden_error")
+						apierr.Abort(c, http.StatusForbidden, "Sharing key is restricted to the team model endpoint", apierr.TypePermission)
 						return
 					}
 
@@ -331,13 +331,13 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 
 		// Check global config model token (backward compatibility)
 		if cfg == nil || !cfg.HasModelToken() {
-			apierr.Abort(c, http.StatusInternalServerError, "config or config model token missing", apierr.TypeInvalidRequest)
+			apierr.Abort(c, http.StatusInternalServerError, "config or config model token missing", apierr.TypeAPI)
 			return
 		}
 
 		// If global token is disabled and multi-tenant is enabled, reject
 		if cfg.IsMultiTenantEnabled() && cfg.IsGlobalTokenDisabled() {
-			apierr.Abort(c, http.StatusUnauthorized, "Global token disabled, use API token", "invalid_token_error")
+			apierr.Abort(c, http.StatusUnauthorized, "Global token disabled, use API token", apierr.TypeAuthentication)
 			return
 		}
 
@@ -353,7 +353,7 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 			if contextJWT != "" {
 				claims, verifyErr := verifyEnterpriseContextJWT(cfg, contextJWT)
 				if verifyErr != nil {
-					apierr.Abort(c, http.StatusUnauthorized, "Invalid enterprise context jwt", apierr.TypeInvalidRequest)
+					apierr.Abort(c, http.StatusUnauthorized, "Invalid enterprise context jwt", apierr.TypeAuthentication)
 					return
 				}
 				if claims != nil {
@@ -375,11 +375,11 @@ func (am *AuthMiddleware) ModelAuthMiddleware() gin.HandlerFunc {
 			requestToken = xApiKey
 		}
 		if strings.HasPrefix(strings.TrimSpace(requestToken), "sk-tbe-") {
-			apierr.Abort(c, http.StatusUnauthorized, "Virtual key must be used through TBE /tbe/* endpoints", apierr.TypeInvalidRequest)
+			apierr.Abort(c, http.StatusUnauthorized, "Virtual key must be used through TBE /tbe/* endpoints", apierr.TypeAuthentication)
 			return
 		}
 
-		apierr.Abort(c, http.StatusUnauthorized, "Invalid model authorization token.", apierr.TypeInvalidRequest)
+		apierr.Abort(c, http.StatusUnauthorized, "Invalid model authorization token.", apierr.TypeAuthentication)
 	}
 }
 

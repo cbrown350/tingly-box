@@ -79,8 +79,8 @@ func TestModelAuthMiddleware_SharingKeySurfaceAuthorization(t *testing.T) {
 				if body := w.Body.String(); !strings.Contains(body, `"auth_kind":"sharing_key"`) || !strings.Contains(body, `"user_id":"sharing-user"`) || !strings.Contains(body, `"team_id":"`+db.DefaultTeamID+`"`) {
 					t.Fatalf("unexpected sharing principal context: %s", body)
 				}
-			} else if !strings.Contains(w.Body.String(), `"type":"forbidden_error"`) {
-				t.Fatalf("expected forbidden_error: %s", w.Body.String())
+			} else if !strings.Contains(w.Body.String(), `"type":"permission_error"`) {
+				t.Fatalf("expected permission_error: %s", w.Body.String())
 			}
 		})
 	}

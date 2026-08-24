@@ -35,6 +35,8 @@ const (
 	TypeConflict       = "conflict_error"
 	TypeInternal       = "internal_error"
 	TypeAPI            = "api_error"
+	TypeAuthentication = "authentication_error"
+	TypePermission     = "permission_error"
 )
 
 // Send writes a {"error": {"message", "type"}} JSON response.
