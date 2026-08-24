@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tingly-dev/tingly-box/internal/middleware"
+	"github.com/tingly-dev/tingly-box/internal/protocol"
 )
 
 // RegisterRoutes mounts the LLM gateway surface (/tingly/:scenario[/v1]/...)
@@ -50,25 +51,25 @@ func (ph *ProtocolHandler) RegisterRoutes(engine *gin.Engine, modelAuth gin.Hand
 // Anthropic surfaces on one group), each gated by modelAuth.
 func (ph *ProtocolHandler) SetupMixinEndpoints(group *gin.RouterGroup, modelAuth gin.HandlerFunc) {
 	// Chat completions endpoint (OpenAI compatible)
-	group.POST("/chat/completions", modelAuth, ph.teamScopeMiddleware, ph.HandleOpenAIChatCompletions)
+	group.POST("/chat/completions", protocol.WithClientStyle(protocol.APIStyleOpenAI), modelAuth, ph.teamScopeMiddleware, ph.HandleOpenAIChatCompletions)
 
 	// Responses API endpoints (OpenAI compatible)
-	group.POST("/responses", modelAuth, ph.teamScopeMiddleware, ph.HandleResponsesCreate)
-	group.GET("/responses/:id", modelAuth, ph.teamScopeMiddleware, ph.HandleResponsesGet)
+	group.POST("/responses", protocol.WithClientStyle(protocol.APIStyleOpenAI), modelAuth, ph.teamScopeMiddleware, ph.HandleResponsesCreate)
+	group.GET("/responses/:id", protocol.WithClientStyle(protocol.APIStyleOpenAI), modelAuth, ph.teamScopeMiddleware, ph.HandleResponsesGet)
 
 	// Chat completions endpoint (Anthropic compatible)
-	group.POST("/messages", modelAuth, ph.teamScopeMiddleware, ph.HandleAnthropicMessages)
+	group.POST("/messages", protocol.WithClientStyle(protocol.APIStyleAnthropic), modelAuth, ph.teamScopeMiddleware, ph.HandleAnthropicMessages)
 	// Count tokens endpoint (Anthropic compatible)
-	group.POST("/messages/count_tokens", modelAuth, ph.teamScopeMiddleware, ph.AnthropicCountTokens)
+	group.POST("/messages/count_tokens", protocol.WithClientStyle(protocol.APIStyleAnthropic), modelAuth, ph.teamScopeMiddleware, ph.AnthropicCountTokens)
 
 	// Embeddings endpoint (OpenAI compatible)
-	group.POST("/embeddings", modelAuth, ph.teamScopeMiddleware, DeclareOperation("embeddings"), ph.HandleOpenAIEmbeddings)
+	group.POST("/embeddings", protocol.WithClientStyle(protocol.APIStyleOpenAI), modelAuth, ph.teamScopeMiddleware, DeclareOperation("embeddings"), ph.HandleOpenAIEmbeddings)
 
 	// Image generation endpoint (OpenAI compatible).
 	// Routed directly to upstream POST /v1/images/generations; the Responses API
 	// (POST /responses with the image_generation tool) is exposed in parallel via
 	// the same scenario, with the caller choosing which surface to use.
-	group.POST("/images/generations", modelAuth, ph.teamScopeMiddleware, DeclareOperation("image_generation"), ph.HandleOpenAIImageGeneration)
+	group.POST("/images/generations", protocol.WithClientStyle(protocol.APIStyleOpenAI), modelAuth, ph.teamScopeMiddleware, DeclareOperation("image_generation"), ph.HandleOpenAIImageGeneration)
 
 	// Models endpoint (routed by scenario: openai -> OpenAIListModels, anthropic/claude_code -> AnthropicListModels)
 	group.GET("/models", modelAuth, ph.teamScopeMiddleware, ph.ListModelsByScenario)

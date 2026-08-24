@@ -54,6 +54,7 @@ func MarshalAndSendErrorEvent(c *gin.Context, message, errorType, code string) {
 
 // SendInvalidRequestBodyError sends an error response for invalid request body
 func SendInvalidRequestBodyError(c *gin.Context, err error) {
+	protocol.MarkGatewayError(c)
 	c.JSON(http.StatusBadRequest, protocol.ErrorResponse{
 		Error: protocol.ErrorDetail{
 			Message: "Invalid request body: " + err.Error(),
@@ -69,10 +70,14 @@ func SendInvalidRequestBodyError(c *gin.Context, err error) {
 // flattening every pre-stream failure into a 500.
 func SendStreamingError(c *gin.Context, err error) {
 	c.Error(err).SetType(gin.ErrorTypePublic) //nolint:errcheck
+	if protocol.WriteUpstreamError(c, err) {
+		return
+	}
+	protocol.MarkGatewayError(c)
 	c.JSON(protocol.UpstreamStatus(err, http.StatusInternalServerError), protocol.ErrorResponse{
 		Error: protocol.ErrorDetail{
 			Message: "Failed to create streaming request: " + err.Error(),
-			Type:    "api_error",
+			Type:    "gateway_error",
 		},
 	})
 }
@@ -81,10 +86,14 @@ func SendStreamingError(c *gin.Context, err error) {
 // propagating the upstream provider's HTTP status when the error carries one.
 func SendForwardingError(c *gin.Context, err error) {
 	c.Error(err).SetType(gin.ErrorTypePublic) //nolint:errcheck
+	if protocol.WriteUpstreamError(c, err) {
+		return
+	}
+	protocol.MarkGatewayError(c)
 	c.JSON(protocol.UpstreamStatus(err, http.StatusInternalServerError), protocol.ErrorResponse{
 		Error: protocol.ErrorDetail{
 			Message: "Failed to forward request: " + err.Error(),
-			Type:    "api_error",
+			Type:    "gateway_error",
 		},
 	})
 }
@@ -92,10 +101,11 @@ func SendForwardingError(c *gin.Context, err error) {
 // SendInternalError sends an error response for internal errors
 func SendInternalError(c *gin.Context, errMsg string) {
 	c.Error(fmt.Errorf("%s", errMsg)).SetType(gin.ErrorTypePublic) //nolint:errcheck
+	protocol.MarkGatewayError(c)
 	c.JSON(http.StatusInternalServerError, protocol.ErrorResponse{
 		Error: protocol.ErrorDetail{
 			Message: errMsg,
-			Type:    "api_error",
+			Type:    "gateway_error",
 			Code:    "streaming_unsupported",
 		},
 	})

@@ -160,7 +160,8 @@ func TestHandleResponsesToAnthropicV1Assembly_TruncatedNoContent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	errObj, ok := resp["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "api_error", errObj["type"])
+	assert.Equal(t, "gateway_error", errObj["type"])
+	assert.Equal(t, "gateway", rec.Header().Get("X-Tingly-Error"))
 }
 
 // TestHandleResponsesToAnthropicV1Assembly_TruncatedPartialContent: a stream

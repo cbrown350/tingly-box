@@ -62,10 +62,11 @@ func (ph *ProtocolHandler) handlePreStreamFailure(c *gin.Context, err error, rec
 // rejected in the prologue, before the gate is installed, so they remain
 // non-retryable and reach the client unchanged.
 func (ph *ProtocolHandler) FailAttemptSetup(c *gin.Context, err error) {
+	protocol.MarkGatewayError(c)
 	c.JSON(http.StatusInternalServerError, ErrorResponse{
 		Error: ErrorDetail{
 			Message: err.Error(),
-			Type:    "api_error",
+			Type:    "gateway_error",
 		},
 	})
 }

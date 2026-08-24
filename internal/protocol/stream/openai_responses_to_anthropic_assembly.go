@@ -140,10 +140,11 @@ func recoverAssemblyPanic(c *gin.Context) {
 	if r := recover(); r != nil {
 		logrus.WithContext(c.Request.Context()).Errorf("Panic in Responses API to Anthropic assembly handler: %v", r)
 		if c.Writer != nil && !c.Writer.Written() {
+			protocol.MarkGatewayError(c)
 			c.JSON(http.StatusInternalServerError, protocol.ErrorResponse{
 				Error: protocol.ErrorDetail{
 					Message: "Internal assembly error",
-					Type:    "internal_error",
+					Type:    "gateway_error",
 				},
 			})
 		}
@@ -159,10 +160,14 @@ func failEmptyAssembly(c *gin.Context, err error, stopReason string) error {
 	if err == nil {
 		err = fmt.Errorf("upstream responses stream produced no content blocks (stop_reason=%q)", stopReason)
 	}
+	if protocol.WriteUpstreamError(c, err) {
+		return err
+	}
+	protocol.MarkGatewayError(c)
 	c.JSON(protocol.UpstreamStatus(err, http.StatusBadGateway), protocol.ErrorResponse{
 		Error: protocol.ErrorDetail{
 			Message: "Upstream returned an empty response: " + err.Error(),
-			Type:    "api_error",
+			Type:    "gateway_error",
 		},
 	})
 	return err

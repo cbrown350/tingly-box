@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tingly-dev/tingly-box/internal/middleware"
+	"github.com/tingly-dev/tingly-box/internal/protocol"
 	sharing "github.com/tingly-dev/tingly-box/internal/server/module/sharing"
 	team "github.com/tingly-dev/tingly-box/internal/server/module/team"
 	"github.com/tingly-dev/tingly-box/swagger"
@@ -69,10 +70,12 @@ func (s *Server) UseVirtualModelEndpoints() {
 	mw := s.getModelAuthMiddleware()
 
 	openai := s.engine.Group("/virtual/openai")
+	openai.Use(protocol.WithClientStyle(protocol.APIStyleOpenAI))
 	openai.Use(mw)
 	s.virtualModelService.SetupOpenAIRoutes(openai)
 
 	anthropic := s.engine.Group("/virtual/anthropic")
+	anthropic.Use(protocol.WithClientStyle(protocol.APIStyleAnthropic))
 	anthropic.Use(mw)
 	s.virtualModelService.SetupAnthropicRoutes(anthropic)
 }

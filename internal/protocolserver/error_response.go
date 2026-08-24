@@ -50,14 +50,15 @@ func (ph *ProtocolHandler) failForward(c *gin.Context, recorder *recording.Proto
 }
 
 // respondMCPError is the MCP-tool-call variant of failRequest: a fixed 500
-// "api_error" body (MCP loop failures are gateway-internal, so no upstream
+// gateway_error body (MCP loop failures are gateway-internal, so no upstream
 // status to propagate) with the message ordered as "desc: err".
 func (ph *ProtocolHandler) respondMCPError(c *gin.Context, recorder *recording.ProtocolRecorder, err error, msg string) {
 	ph.trackUsageFromContext(c, 0, 0, err)
+	protocol.MarkGatewayError(c)
 	c.JSON(http.StatusInternalServerError, ErrorResponse{
 		Error: ErrorDetail{
 			Message: msg + ": " + err.Error(),
-			Type:    "api_error",
+			Type:    "gateway_error",
 		},
 	})
 	if recorder != nil {
@@ -65,22 +66,21 @@ func (ph *ProtocolHandler) respondMCPError(c *gin.Context, recorder *recording.P
 	}
 }
 
-// SendErrorResponse registers the error into gin context for logging middleware and sends JSON response.
+// SendErrorResponse registers the error into gin context for logging
+// middleware and answers the client. An upstream provider failure is
+// relayed with its own status and body (see protocol.WriteUpstreamError);
+// anything else is a gateway failure answered as a 500 gateway_error.
 func SendErrorResponse(c *gin.Context, err error, desc string) {
-
-	// upstreamForwardStatus returns the status code to send to the client when a
-	// non-streaming forward fails. It propagates the upstream provider's HTTP status
-	// when the error carries one (so a 401/429/4xx is not flattened into a 500) and
-	// defaults to 500 Internal Server Error otherwise.
-	statusCode := protocol.UpstreamStatus(err, http.StatusInternalServerError)
-
-	asErr := fmt.Errorf("%s: %s", err.Error(), desc)
+	asErr := fmt.Errorf("%s: %w", desc, err)
 	c.Error(asErr).SetType(gin.ErrorTypePublic) //nolint:errcheck
-	c.JSON(statusCode, ErrorResponse{
+	if protocol.WriteUpstreamError(c, err) {
+		return
+	}
+	protocol.MarkGatewayError(c)
+	c.JSON(http.StatusInternalServerError, ErrorResponse{
 		Error: ErrorDetail{
 			Message: asErr.Error(),
-			Type:    "protocol_error",
-			Code:    desc,
+			Type:    "gateway_error",
 		},
 	})
 }

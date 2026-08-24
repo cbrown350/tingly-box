@@ -64,10 +64,11 @@ func HandleOpenAIChatStream(hc *protocol.HandleContext, streamResp *openaistream
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
+		protocol.MarkGatewayError(c)
 		c.JSON(http.StatusInternalServerError, protocol.ErrorResponse{
 			Error: protocol.ErrorDetail{
 				Message: "Streaming not supported by this connection",
-				Type:    "api_error",
+				Type:    "gateway_error",
 				Code:    "streaming_unsupported",
 			},
 		})
