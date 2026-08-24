@@ -66,7 +66,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	randomToken, err := generateRandomToken()
 	if err != nil {
-		apierr.SendInternalMsg(c, "failed to generate token: "+err.Error())
+		apierr.SendInternalErr(c, err, "failed to generate token")
 		return
 	}
 	tokenString := "tb-share-" + randomToken
@@ -119,7 +119,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	records, total, err := h.store.ListTokensForTeam(userUUID, teamID, enabled, limit, offset)
 	if err != nil {
-		apierr.SendInternalMsg(c, "failed to list tokens: "+err.Error())
+		apierr.SendInternalErr(c, err, "failed to list tokens")
 		return
 	}
 
@@ -227,7 +227,7 @@ func (h *Handler) Regenerate(c *gin.Context) {
 
 	randomToken, err := generateRandomToken()
 	if err != nil {
-		apierr.SendInternalMsg(c, "failed to generate token: "+err.Error())
+		apierr.SendInternalErr(c, err, "failed to generate token")
 		return
 	}
 	newTokenString := "tb-share-" + randomToken

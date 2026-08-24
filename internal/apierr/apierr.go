@@ -86,14 +86,13 @@ func SendNotFoundMsg(c *gin.Context, msg string) {
 	SendMsg(c, http.StatusNotFound, msg, TypeNotFound)
 }
 
-// SendInternal sends a 500 internal_error.
-func SendInternal(c *gin.Context, err error) {
-	Send(c, http.StatusInternalServerError, err, TypeInternal)
-}
-
-// SendInternalMsg is SendInternal with a message string.
-func SendInternalMsg(c *gin.Context, msg string) {
-	SendMsg(c, http.StatusInternalServerError, msg, TypeInternal)
+// SendInternalErr answers a 500 internal_error carrying only publicMsg;
+// the full error is registered on the gin context for the logging
+// middleware, so internal details (driver text, file paths) reach the
+// log but never the client.
+func SendInternalErr(c *gin.Context, err error, publicMsg string) {
+	c.Error(fmt.Errorf("%s: %w", publicMsg, err)).SetType(gin.ErrorTypePrivate) //nolint:errcheck
+	SendMsg(c, http.StatusInternalServerError, publicMsg, TypeInternal)
 }
 
 // SendStoreError maps a store-layer error to an HTTP response by its

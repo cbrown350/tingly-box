@@ -27,14 +27,14 @@ func (h *WebHandler) GenerateToken(c *gin.Context) {
 
 	token, err := h.deps.JWTManager.GenerateToken(req.ClientID)
 	if err != nil {
-		apierr.SendMsg(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error(), apierr.TypeAPI)
+		apierr.SendInternalErr(c, err, "failed to generate token")
 		return
 	}
 
 	token = "tingly-box-" + token
 	err = h.deps.Config.SetModelToken(token)
 	if err != nil {
-		apierr.SendMsg(c, http.StatusInternalServerError, "Failed to save token: "+err.Error(), apierr.TypeAPI)
+		apierr.SendInternalErr(c, err, "failed to save token")
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *WebHandler) GetToken(c *gin.Context) {
 	clientID := "auto-generated"
 	token, err := h.deps.JWTManager.GenerateToken(clientID)
 	if err != nil {
-		apierr.SendMsg(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error(), apierr.TypeAPI)
+		apierr.SendInternalErr(c, err, "failed to generate token")
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *WebHandler) GetToken(c *gin.Context) {
 	token = "tingly-box-" + token
 	err = globalConfig.SetModelToken(token)
 	if err != nil {
-		apierr.SendMsg(c, http.StatusInternalServerError, "Failed to save token: "+err.Error(), apierr.TypeAPI)
+		apierr.SendInternalErr(c, err, "failed to save token")
 		return
 	}
 
