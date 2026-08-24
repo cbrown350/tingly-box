@@ -148,7 +148,7 @@ func (h *Handler) MoveToTeam(c *gin.Context) {
 	}
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		apierr.SendNotFound(c, err)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, recordToInfo(record))
@@ -164,7 +164,7 @@ func (h *Handler) Get(c *gin.Context) {
 
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		apierr.SendNotFoundMsg(c, "token not found")
+		apierr.SendStoreError(c, err)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	if err := h.store.DeleteToken(tokenID); err != nil {
-		apierr.SendInternalMsg(c, "failed to delete token: "+err.Error())
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -203,12 +203,8 @@ func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 		return
 	}
 
-	action := "disable"
-	if enabled {
-		action = "enable"
-	}
 	if err := h.store.SetTokenEnabled(tokenID, enabled); err != nil {
-		apierr.SendInternalMsg(c, "failed to "+action+" token: "+err.Error())
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -225,7 +221,7 @@ func (h *Handler) Regenerate(c *gin.Context) {
 
 	record, err := h.store.GetToken(tokenID)
 	if err != nil {
-		apierr.SendNotFoundMsg(c, "token not found")
+		apierr.SendStoreError(c, err)
 		return
 	}
 
@@ -237,7 +233,7 @@ func (h *Handler) Regenerate(c *gin.Context) {
 	newTokenString := "tb-share-" + randomToken
 
 	if err := h.store.UpdateTokenString(tokenID, newTokenString); err != nil {
-		apierr.SendInternalMsg(c, "failed to regenerate token: "+err.Error())
+		apierr.SendStoreError(c, err)
 		return
 	}
 

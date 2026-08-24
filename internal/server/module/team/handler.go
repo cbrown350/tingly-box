@@ -75,7 +75,11 @@ func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 		apierr.SendStoreError(c, err)
 		return
 	}
-	record, _ := h.store.Get(id)
+	record, err := h.store.Get(id)
+	if err != nil {
+		apierr.SendStoreError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, recordToInfo(record))
 }
 
