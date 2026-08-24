@@ -1,7 +1,6 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/tingly-dev/tingly-box/internal/errkind"
 	"github.com/tingly-dev/tingly-box/internal/typ"
 )
 
@@ -99,10 +99,10 @@ func (s *TeamStore) loadCache() error {
 
 func validateTeamName(name string) error {
 	if strings.TrimSpace(name) == "" {
-		return errors.New("team name cannot be empty")
+		return errkind.Newf(errkind.ErrInvalid, "team name cannot be empty")
 	}
 	if len(name) > 128 {
-		return errors.New("team name cannot exceed 128 characters")
+		return errkind.Newf(errkind.ErrInvalid, "team name cannot exceed 128 characters")
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (s *TeamStore) Create(name string) (*TeamRecord, error) {
 	existingSlugs := make([]string, 0, len(s.cache))
 	for _, existing := range s.cache {
 		if existing.Name == name {
-			return nil, fmt.Errorf("team name '%s' already exists", name)
+			return nil, errkind.Newf(errkind.ErrConflict, "team name '%s' already exists", name)
 		}
 		existingSlugs = append(existingSlugs, existing.Slug)
 	}
@@ -144,7 +144,7 @@ func (s *TeamStore) Get(id string) (*TeamRecord, error) {
 	defer s.mu.RUnlock()
 	record, ok := s.cache[id]
 	if !ok {
-		return nil, fmt.Errorf("team '%s' not found", id)
+		return nil, errkind.Newf(errkind.ErrNotFound, "team '%s' not found", id)
 	}
 	return cloneTeam(record), nil
 }
@@ -175,11 +175,11 @@ func (s *TeamStore) Update(id, name string) (*TeamRecord, error) {
 	defer s.mu.Unlock()
 	record, ok := s.cache[id]
 	if !ok {
-		return nil, fmt.Errorf("team '%s' not found", id)
+		return nil, errkind.Newf(errkind.ErrNotFound, "team '%s' not found", id)
 	}
 	for otherID, existing := range s.cache {
 		if otherID != id && existing.Name == name {
-			return nil, fmt.Errorf("team name '%s' already exists", name)
+			return nil, errkind.Newf(errkind.ErrConflict, "team name '%s' already exists", name)
 		}
 	}
 	if err := s.db.Model(&TeamRecord{}).Where("id = ?", id).Updates(map[string]any{
@@ -197,7 +197,7 @@ func (s *TeamStore) SetEnabled(id string, enabled bool) error {
 	defer s.mu.Unlock()
 	record, ok := s.cache[id]
 	if !ok {
-		return fmt.Errorf("team '%s' not found", id)
+		return errkind.Newf(errkind.ErrNotFound, "team '%s' not found", id)
 	}
 	if err := s.db.Model(&TeamRecord{}).Where("id = ?", id).Update("enabled", enabled).Error; err != nil {
 		return fmt.Errorf("failed to update team enabled state: %w", err)
@@ -209,13 +209,13 @@ func (s *TeamStore) SetEnabled(id string, enabled bool) error {
 
 func (s *TeamStore) Delete(id string) error {
 	if id == DefaultTeamID {
-		return errors.New("default team cannot be deleted")
+		return errkind.Newf(errkind.ErrConflict, "default team cannot be deleted")
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.cache[id]; !ok {
-		return fmt.Errorf("team '%s' not found", id)
+		return errkind.Newf(errkind.ErrNotFound, "team '%s' not found", id)
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if tx.Migrator().HasTable(&APITokenRecord{}) {
@@ -224,7 +224,7 @@ func (s *TeamStore) Delete(id string) error {
 				return err
 			}
 			if tokenCount > 0 {
-				return fmt.Errorf("team still owns %d sharing key(s)", tokenCount)
+				return errkind.Newf(errkind.ErrConflict, "team still owns %d sharing key(s)", tokenCount)
 			}
 		}
 		result := tx.Where("id = ?", id).Delete(&TeamRecord{})
@@ -232,7 +232,7 @@ func (s *TeamStore) Delete(id string) error {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return fmt.Errorf("team '%s' not found", id)
+			return errkind.Newf(errkind.ErrNotFound, "team '%s' not found", id)
 		}
 		return nil
 	}); err != nil {

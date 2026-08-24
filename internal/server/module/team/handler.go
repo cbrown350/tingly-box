@@ -41,7 +41,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	record, err := h.store.Create(req.Name)
 	if err != nil {
-		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, recordToInfo(record))
@@ -60,7 +60,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	record, err := h.store.Update(id, req.Name)
 	if err != nil {
-		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, recordToInfo(record))
@@ -72,7 +72,7 @@ func (h *Handler) Disable(c *gin.Context) { h.setEnabled(c, false) }
 func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 	id := c.Param("team_id")
 	if err := h.store.SetEnabled(id, enabled); err != nil {
-		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	record, _ := h.store.Get(id)
@@ -82,7 +82,7 @@ func (h *Handler) setEnabled(c *gin.Context, enabled bool) {
 func (h *Handler) Delete(c *gin.Context) {
 	id := c.Param("team_id")
 	if err := h.store.Delete(id); err != nil {
-		apierr.SendStoreError(c, err, http.StatusConflict, apierr.TypeConflict)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)

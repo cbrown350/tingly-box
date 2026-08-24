@@ -6,11 +6,13 @@
 package apierr
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tingly-dev/tingly-box/internal/errkind"
 )
 
 // ErrorResponse is the wire envelope: {"error": {...}}.
@@ -92,19 +94,23 @@ func SendInternalMsg(c *gin.Context, msg string) {
 	SendMsg(c, http.StatusInternalServerError, msg, TypeInternal)
 }
 
-// SendStoreError maps a store-layer error to an HTTP response by the substring
-// conventions the db stores follow: "not found" → 404 not_found_error;
-// "already exists" / "unique" / "disabled" → 409 conflict_error; anything
-// else falls back to the given default status and type.
-func SendStoreError(c *gin.Context, err error, defaultStatus int, defaultType string) {
-	status, errType := defaultStatus, defaultType
-	msg := strings.ToLower(err.Error())
+// SendStoreError maps a store-layer error to an HTTP response by its
+// errkind mark: ErrInvalid → 400 invalid_request_error, ErrNotFound →
+// 404 not_found_error, ErrConflict → 409 conflict_error — the store's
+// message is shown for all three, so stores must keep marked messages
+// caller-safe. An unmarked error is an internal failure: it is registered
+// on the gin context for the logging middleware and answered with a
+// generic 500, so driver internals never reach the client.
+func SendStoreError(c *gin.Context, err error) {
 	switch {
-	case strings.Contains(msg, "not found"):
-		status, errType = http.StatusNotFound, TypeNotFound
-	case strings.Contains(msg, "already exists"), strings.Contains(msg, "unique"),
-		strings.Contains(msg, "disabled"):
-		status, errType = http.StatusConflict, TypeConflict
+	case errors.Is(err, errkind.ErrInvalid):
+		Send(c, http.StatusBadRequest, err, TypeInvalidRequest)
+	case errors.Is(err, errkind.ErrNotFound):
+		Send(c, http.StatusNotFound, err, TypeNotFound)
+	case errors.Is(err, errkind.ErrConflict):
+		Send(c, http.StatusConflict, err, TypeConflict)
+	default:
+		c.Error(err).SetType(gin.ErrorTypePrivate) //nolint:errcheck
+		SendMsg(c, http.StatusInternalServerError, "internal error", TypeInternal)
 	}
-	SendMsg(c, status, err.Error(), errType)
 }

@@ -77,7 +77,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	record, err := h.store.CreateTokenForTeam(userUUID, tokenString, teamID, req.DisplayName, "admin", nil)
 	if err != nil {
-		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
+		apierr.SendStoreError(c, err)
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *Handler) MoveToTeam(c *gin.Context) {
 		return
 	}
 	if err := h.store.MoveTokenToTeam(tokenID, req.TeamID); err != nil {
-		apierr.SendStoreError(c, err, http.StatusBadRequest, apierr.TypeInvalidRequest)
+		apierr.SendStoreError(c, err)
 		return
 	}
 	record, err := h.store.GetToken(tokenID)

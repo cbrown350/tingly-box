@@ -8,6 +8,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+
+	"github.com/tingly-dev/tingly-box/internal/errkind"
 )
 
 // APITokenRecord represents a user API token for multi-tenant authentication
@@ -184,13 +186,13 @@ func (s *APITokenStore) CreateTokenWithTokenID(userID, tokenID, displayName, cre
 // CreateTokenForTeam creates a sharing key bound to exactly one enabled team.
 func (s *APITokenStore) CreateTokenForTeam(userID, tokenID, teamID, displayName, createdBy string, expiresAt *time.Time) (*APITokenRecord, error) {
 	if userID == "" {
-		return nil, errors.New("user ID cannot be empty")
+		return nil, errkind.Newf(errkind.ErrInvalid, "user ID cannot be empty")
 	}
 	if tokenID == "" {
-		return nil, errors.New("token ID cannot be empty")
+		return nil, errkind.Newf(errkind.ErrInvalid, "token ID cannot be empty")
 	}
 	if teamID == "" {
-		return nil, errors.New("team ID cannot be empty")
+		return nil, errkind.Newf(errkind.ErrInvalid, "team ID cannot be empty")
 	}
 	if s.teamStore == nil {
 		return nil, errors.New("team store is not initialized")
@@ -200,7 +202,7 @@ func (s *APITokenStore) CreateTokenForTeam(userID, tokenID, teamID, displayName,
 		return nil, err
 	}
 	if !team.Enabled {
-		return nil, fmt.Errorf("team '%s' is disabled", teamID)
+		return nil, errkind.Newf(errkind.ErrConflict, "team '%s' is disabled", teamID)
 	}
 
 	s.mu.Lock()
@@ -212,7 +214,7 @@ func (s *APITokenStore) CreateTokenForTeam(userID, tokenID, teamID, displayName,
 // ValidateToken validates a token ID and returns the associated token record
 func (s *APITokenStore) ValidateToken(tokenID string) (*APITokenRecord, error) {
 	if tokenID == "" {
-		return nil, errors.New("token ID cannot be empty")
+		return nil, errkind.Newf(errkind.ErrInvalid, "token ID cannot be empty")
 	}
 
 	s.mu.RLock()
@@ -242,7 +244,7 @@ func (s *APITokenStore) ValidateToken(tokenID string) (*APITokenRecord, error) {
 // new authorization scope immediately.
 func (s *APITokenStore) MoveTokenToTeam(tokenID, teamID string) error {
 	if tokenID == "" || teamID == "" {
-		return errors.New("token ID and team ID are required")
+		return errkind.Newf(errkind.ErrInvalid, "token ID and team ID are required")
 	}
 	if s.teamStore == nil {
 		return errors.New("team store is not initialized")
@@ -252,7 +254,7 @@ func (s *APITokenStore) MoveTokenToTeam(tokenID, teamID string) error {
 		return err
 	}
 	if !team.Enabled {
-		return fmt.Errorf("team '%s' is disabled", teamID)
+		return errkind.Newf(errkind.ErrConflict, "team '%s' is disabled", teamID)
 	}
 
 	s.mu.Lock()
@@ -262,7 +264,7 @@ func (s *APITokenStore) MoveTokenToTeam(tokenID, teamID string) error {
 		return fmt.Errorf("failed to move token: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("token with ID '%s' not found", tokenID)
+		return errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 	if record, ok := s.cache[tokenID]; ok {
 		record.TeamID = teamID
@@ -273,7 +275,7 @@ func (s *APITokenStore) MoveTokenToTeam(tokenID, teamID string) error {
 // RevokeToken revokes a token by setting enabled to false
 func (s *APITokenStore) RevokeToken(tokenID, reason string) error {
 	if tokenID == "" {
-		return errors.New("token ID cannot be empty")
+		return errkind.Newf(errkind.ErrInvalid, "token ID cannot be empty")
 	}
 
 	s.mu.Lock()
@@ -292,7 +294,7 @@ func (s *APITokenStore) RevokeToken(tokenID, reason string) error {
 		return fmt.Errorf("failed to revoke token: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("token with ID '%s' not found", tokenID)
+		return errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 
 	if record, ok := s.cache[tokenID]; ok {
@@ -355,7 +357,7 @@ func (s *APITokenStore) GetToken(tokenID string) (*APITokenRecord, error) {
 
 	record, ok := s.cache[tokenID]
 	if !ok {
-		return nil, fmt.Errorf("token with ID '%s' not found", tokenID)
+		return nil, errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 
 	clone := *record
@@ -424,7 +426,7 @@ func (s *APITokenStore) SetTokenEnabled(tokenID string, enabled bool) error {
 		return fmt.Errorf("failed to update token enabled state: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("token with ID '%s' not found", tokenID)
+		return errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 
 	if record, ok := s.cache[tokenID]; ok {
@@ -448,7 +450,7 @@ func (s *APITokenStore) UpdateTokenString(tokenID, newTokenString string) error 
 		return fmt.Errorf("failed to update token string: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("token with ID '%s' not found", tokenID)
+		return errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 
 	if record, ok := s.cache[tokenID]; ok {
@@ -471,7 +473,7 @@ func (s *APITokenStore) DeleteToken(tokenID string) error {
 		return fmt.Errorf("failed to delete token: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("token with ID '%s' not found", tokenID)
+		return errkind.Newf(errkind.ErrNotFound, "token with ID '%s' not found", tokenID)
 	}
 
 	delete(s.cache, tokenID)
