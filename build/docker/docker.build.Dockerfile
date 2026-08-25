@@ -2,11 +2,8 @@
 # Stage 1: Build
 FROM golang:1.26-alpine AS builder
 
-# Install git, nodejs, npm, pnpm, gcc (for CGO), and other build dependencies
+# Install git, nodejs, npm, gcc (for CGO), and other build dependencies
 RUN apk add --no-cache git nodejs npm ca-certificates tzdata curl jq gcc musl-dev
-
-# Install pnpm
-RUN npm install -g pnpm
 
 # Install Task (task runner)
 RUN go install github.com/go-task/task/v3/cmd/task@latest
@@ -43,8 +40,11 @@ RUN go mod download
 # the dashboard from the embedded internal/web/dist; without this step the
 # binary compiles fine and then returns HTTP 500 for every UI route.
 # Mirrors Taskfile's web:build, minus the swagger regeneration — openapi.json
-# is committed, so gen:api needs no Go tooling.
+# is committed, so gen:api needs no Go tooling. pnpm is installed at the
+# version package.json pins: a newer global pnpm self-provisions that pin and
+# fails integrity, since @pnpm/exe.<platform> is absent from pnpm-lock.yaml.
 RUN cd frontend && \
+    npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")" && \
     pnpm install --no-frozen-lockfile && \
     pnpm gen:api && \
     pnpm build && \
