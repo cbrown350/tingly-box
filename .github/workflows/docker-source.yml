@@ -18,6 +18,11 @@ on:
         required: false
         default: 'linux/amd64'
         type: string
+      dockerfile:
+        description: 'Dockerfile to build from'
+        required: false
+        default: './build/docker/docker.build.Dockerfile'
+        type: string
 
 env: {}
 
@@ -55,6 +60,6 @@ jobs:
         with:
           image_name: tingly-box
           version: ${{ github.event.inputs.image_tag }}
-          dockerfile: ./build/docker/docker.build.Dockerfile
+          dockerfile: ${{ github.event.inputs.dockerfile }}
           platforms: ${{ github.event.inputs.platforms }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
