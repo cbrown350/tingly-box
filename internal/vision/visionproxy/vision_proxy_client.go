@@ -51,18 +51,26 @@ type poolVisionClient struct {
 
 const defaultVisionPrompt = "Describe this image concisely; output plain text only."
 
-// defaultVisionMaxTokens caps the describe call. Reasoning models spend this
-// budget on their chain of thought before writing any content, so a cap that
-// is too low yields an empty description rather than a terse one — the image
-// is then stripped and the caller silently loses it. Measured against
-// qwen3.5:397b on a photograph: 256 returns zero content tokens on every
-// attempt, while 1024 returns a usable description on 4 of 5 and 2048 on all.
-const defaultVisionMaxTokens = 1024
+// defaultVisionMaxTokens caps the describe call. The cap exists only because
+// Anthropic requires max_tokens on every request; it is not a cost control.
+// What the describe call costs is decided by which model the vision proxy
+// points at, and truncating that model's output saves nothing — it destroys
+// the description and the image along with it. So the value is set high
+// enough never to bind in practice rather than tuned to a workload.
+//
+// Reasoning models make a small cap actively harmful: they spend the budget
+// on their chain of thought before writing any content, so the caller gets an
+// empty string rather than a short description. Measured against
+// qwen3.5:397b on a photograph, the previous cap of 256 returned zero content
+// tokens on every attempt; 1024 succeeded on 4 of 5, 2048 on all 5. The
+// prompt already asks for a concise answer, which is what actually keeps the
+// response short.
+const defaultVisionMaxTokens = 4096
 
-// visionMaxTokensEnv overrides defaultVisionMaxTokens. Vision backends differ
-// by an order of magnitude in how much they think before answering, and the
-// describe call is one hop deep in a request, so the budget has to be
-// tunable without a rebuild. Values below 1 are ignored.
+// visionMaxTokensEnv overrides defaultVisionMaxTokens: an escape hatch for a
+// backend that thinks past even a generous default, or for capping a metered
+// one. The describe call is one hop deep inside a request, so it has to be
+// adjustable without a rebuild. Values below 1 are ignored.
 const visionMaxTokensEnv = "TINGLY_VISION_MAX_TOKENS"
 
 // visionMaxTokens resolves the describe budget, preferring the environment.

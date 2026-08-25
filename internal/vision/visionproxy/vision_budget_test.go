@@ -34,11 +34,13 @@ func TestVisionMaxTokens(t *testing.T) {
 	}
 }
 
-// The default has to clear the reasoning preamble of a reasoning model.
-// Measured: qwen3.5:397b yields zero content tokens at 256 on every attempt.
-func TestDefaultVisionMaxTokens_ClearsReasoningPreamble(t *testing.T) {
-	assert.GreaterOrEqual(t, defaultVisionMaxTokens, 1024,
-		"a budget this small strips images instead of describing them")
+// The default exists to satisfy Anthropic's required max_tokens, not to bound
+// cost, so it must sit far above what any describe call actually writes.
+// Measured: qwen3.5:397b yields zero content tokens at 256 on every attempt,
+// and a description of roughly 400 characters when it has room.
+func TestDefaultVisionMaxTokens_DoesNotBindInPractice(t *testing.T) {
+	assert.GreaterOrEqual(t, defaultVisionMaxTokens, 4096,
+		"a cap this low truncates descriptions and strips the image instead")
 }
 
 func TestErrTruncatedBeforeContent_IsActionable(t *testing.T) {
