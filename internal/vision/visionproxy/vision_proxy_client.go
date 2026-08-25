@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -48,7 +50,43 @@ type poolVisionClient struct {
 }
 
 const defaultVisionPrompt = "Describe this image concisely; output plain text only."
-const defaultVisionMaxTokens = 256
+
+// defaultVisionMaxTokens caps the describe call. Reasoning models spend this
+// budget on their chain of thought before writing any content, so a cap that
+// is too low yields an empty description rather than a terse one — the image
+// is then stripped and the caller silently loses it. Measured against
+// qwen3.5:397b on a photograph: 256 returns zero content tokens on every
+// attempt, while 1024 returns a usable description on 4 of 5 and 2048 on all.
+const defaultVisionMaxTokens = 1024
+
+// visionMaxTokensEnv overrides defaultVisionMaxTokens. Vision backends differ
+// by an order of magnitude in how much they think before answering, and the
+// describe call is one hop deep in a request, so the budget has to be
+// tunable without a rebuild. Values below 1 are ignored.
+const visionMaxTokensEnv = "TINGLY_VISION_MAX_TOKENS"
+
+// visionMaxTokens resolves the describe budget, preferring the environment.
+func visionMaxTokens() int64 {
+	if raw := strings.TrimSpace(os.Getenv(visionMaxTokensEnv)); raw != "" {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n > 0 {
+			return n
+		}
+		logrus.Warnf("vision adapter: ignoring invalid %s=%q", visionMaxTokensEnv, raw)
+	}
+	return defaultVisionMaxTokens
+}
+
+// errTruncatedBeforeContent reports the specific failure where the model hit
+// the token cap without emitting any content. It is distinct from a genuinely
+// empty answer: the caller strips the image either way, but only this one is
+// fixed by raising the budget, and saying so is the difference between an
+// actionable log line and a mystery.
+func errTruncatedBeforeContent(model string, budget int64) error {
+	return fmt.Errorf(
+		"vision adapter: model %q spent all %d tokens before writing any description "+
+			"(typical of reasoning models); raise %s",
+		model, budget, visionMaxTokensEnv)
+}
 
 // NewPoolVisionClient builds the production vision client backed by the
 // shared SDK pool. resolver is typically the routing.ProviderResolver
@@ -106,9 +144,10 @@ func (a *poolVisionClient) describeViaAnthropic(ctx context.Context, provider *t
 	// for vision requests. Use the shared SDK assembler to fold the events
 	// back into a *BetaMessage so we surface a non-streaming result without
 	// hand-rolling the accumulation logic.
+	budget := visionMaxTokens()
 	stream := c.BetaMessagesNewStreaming(ctx, &anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(model),
-		MaxTokens: defaultVisionMaxTokens,
+		MaxTokens: budget,
 		Messages: []anthropic.BetaMessageParam{
 			{
 				Role: anthropic.BetaMessageParamRoleUser,
@@ -136,7 +175,13 @@ func (a *poolVisionClient) describeViaAnthropic(ctx context.Context, provider *t
 			sb.WriteString(b.Text)
 		}
 	}
-	return strings.TrimSpace(sb.String()), nil
+	if text := strings.TrimSpace(sb.String()); text != "" {
+		return text, nil
+	}
+	if msg.StopReason == anthropic.BetaStopReasonMaxTokens {
+		return "", errTruncatedBeforeContent(model, budget)
+	}
+	return "", nil
 }
 
 // describeViaOpenAI calls the OpenAI ChatCompletions endpoint with one user
@@ -157,9 +202,10 @@ func (a *poolVisionClient) describeViaOpenAI(ctx context.Context, provider *typ.
 	// (Qwen-VL, GLM-4V, custom proxies, etc.) only support streaming for
 	// multimodal inputs. Use the shared SDK assembler to fold the chunks
 	// back into a *ChatCompletion.
+	budget := visionMaxTokens()
 	stream := c.ChatCompletionsNewStreaming(ctx, openai.ChatCompletionNewParams{
 		Model:     openai.ChatModel(model),
-		MaxTokens: openai.Int(defaultVisionMaxTokens),
+		MaxTokens: openai.Int(budget),
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				OfUser: &openai.ChatCompletionUserMessageParam{
@@ -186,11 +232,18 @@ func (a *poolVisionClient) describeViaOpenAI(ctx context.Context, provider *typ.
 		return "", err
 	}
 	resp := asm.Finish()
+	truncated := false
 	for _, ch := range resp.Choices {
 		if text := strings.TrimSpace(ch.Message.Content); text != "" {
 			logrus.Debugf("openai: image description: %s", text)
 			return text, nil
 		}
+		if ch.FinishReason == "length" {
+			truncated = true
+		}
+	}
+	if truncated {
+		return "", errTruncatedBeforeContent(model, budget)
 	}
 
 	return "", nil
