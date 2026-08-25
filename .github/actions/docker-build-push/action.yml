@@ -50,7 +50,7 @@ runs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ inputs.registry }}/tingly-dev/${{ inputs.image_name }}
+        images: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}
         tags: |
           type=raw,value=${{ inputs.version }}
           type=raw,value=latest
@@ -76,11 +76,11 @@ runs:
         ## Docker Image Published :rocket:
 
         **Tag:** `${{ inputs.version }}`
-        **Image:** `${{ inputs.registry }}/tingly-dev/${{ inputs.image_name }}:${{ inputs.version }}`
+        **Image:** `${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:${{ inputs.version }}`
 
         ### Pull Command
         ```bash
-        docker pull ${{ inputs.registry }}/tingly-dev/${{ inputs.image_name }}:${{ inputs.version }}
+        docker pull ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:${{ inputs.version }}
         ```
 
         ### Run Command
@@ -90,6 +90,6 @@ runs:
           --name tingly-box \
           -p 12580:12580 \
           -v `pwd`/tingly-data:/app/.tingly-box \
-          ${{ inputs.registry }}/tingly-dev/${{ inputs.image_name }}:${{ inputs.version }}
+          ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image_name }}:${{ inputs.version }}
         ```
         EOF
