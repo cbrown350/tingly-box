@@ -45,6 +45,32 @@ const imageUnavailableText = "[image: (description unavailable)]"
 // message are sent through the vision upstream for description.
 const imageHistoricalText = "[image: (omitted from history)]"
 
+// latestImageAnchor reports the index the "latest turn" test should compare
+// against: the last message that can carry an image from the caller, rather
+// than the last message outright.
+//
+// Clients append trailing messages the caller never sees as part of the turn.
+// Claude Code emits a `<system-reminder>` as its own system-role message after
+// every tool result, so a request answering a tool call arrives as
+//
+//	user / system / assistant(tool_use) / user(tool_result+image) / system
+//
+// Anchoring on len-1 makes the image of the turn *in flight* test as history,
+// and it is replaced with imageHistoricalText before any model sees it — the
+// caller then answers about an image that was never described and never sent.
+//
+// canCarry reports whether the message at an index is one the caller puts
+// images in; trailing messages that fail it do not move the anchor. When no
+// message qualifies the anchor stays at len-1, preserving prior behaviour.
+func latestImageAnchor(n int, canCarry func(i int) bool) int {
+	for i := n - 1; i >= 0; i-- {
+		if canCarry(i) {
+			return i
+		}
+	}
+	return n - 1
+}
+
 // describeConcurrency bounds how many vision upstream calls run in parallel
 // for a single request. The upstream round-trip dominates proxy latency, so
 // a latest message carrying several images (multi-screenshot tool results,
@@ -213,7 +239,9 @@ func spliceOrCollect(refs []imageRef, isLast bool, ref imageRef) []imageRef {
 // .design/vision-proxy.md §6.1) — both shapes are handled.
 func collectBeta(req *anthropic.BetaMessageNewParams) []imageRef {
 	var refs []imageRef
-	lastIdx := len(req.Messages) - 1
+	lastIdx := latestImageAnchor(len(req.Messages), func(i int) bool {
+		return req.Messages[i].Role == anthropic.BetaMessageParamRoleUser
+	})
 	for mi := range req.Messages {
 		isLast := mi == lastIdx
 		blocks := req.Messages[mi].Content
@@ -258,7 +286,9 @@ func collectBeta(req *anthropic.BetaMessageNewParams) []imageRef {
 // collectV1 mirrors collectBeta for the v1 Messages API types.
 func collectV1(req *anthropic.MessageNewParams) []imageRef {
 	var refs []imageRef
-	lastIdx := len(req.Messages) - 1
+	lastIdx := latestImageAnchor(len(req.Messages), func(i int) bool {
+		return req.Messages[i].Role == anthropic.MessageParamRoleUser
+	})
 	for mi := range req.Messages {
 		isLast := mi == lastIdx
 		blocks := req.Messages[mi].Content
@@ -307,7 +337,9 @@ func collectV1(req *anthropic.MessageNewParams) []imageRef {
 // outright (z.ai code 1210) instead of describing.
 func collectOpenAI(req *openai.ChatCompletionNewParams) []imageRef {
 	var refs []imageRef
-	lastIdx := len(req.Messages) - 1
+	lastIdx := latestImageAnchor(len(req.Messages), func(i int) bool {
+		return req.Messages[i].OfUser != nil || req.Messages[i].OfTool != nil
+	})
 	for mi := range req.Messages {
 		var parts []openai.ChatCompletionContentPartUnionParam
 		switch {
@@ -350,7 +382,16 @@ func collectOpenAI(req *openai.ChatCompletionNewParams) []imageRef {
 func collectResponses(req *responses.ResponseNewParams) []imageRef {
 	items := req.Input.OfInputItemList
 	var refs []imageRef
-	lastIdx := len(items) - 1
+	lastIdx := latestImageAnchor(len(items), func(i int) bool {
+		switch {
+		case items[i].OfMessage != nil:
+			return items[i].OfMessage.Role == responses.EasyInputMessageRoleUser
+		case items[i].OfInputMessage != nil:
+			return items[i].OfInputMessage.Role == "user"
+		default:
+			return false
+		}
+	})
 	for mi := range items {
 		var list responses.ResponseInputMessageContentListParam
 		switch {

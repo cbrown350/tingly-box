@@ -156,6 +156,7 @@ fail-strip does not apply; they always receive the omitted marker.
   success                 │ desc non-empty                   │  [image: …]│
                           ├──────────────────────────────────┴───────────┤
   historical image        │ messages[i] where i < lastIdx    │  historic │
+                          │ (lastIdx = latest image-bearing) │            │
                           │ (no Describe call)               │            │
                           └──────────────────────────────────┴───────────┘
   unavail  = "[image: (description unavailable)]"
@@ -166,10 +167,20 @@ fail-strip does not apply; they always receive the omitted marker.
 
 | Request shape                              | Image block source                             | Notes                                  |
 |--------------------------------------------|--------------------------------------------------|----------------------------------------|
-| `*anthropic.BetaMessageNewParams`          | `BetaImageBlockParam.Source` (Base64 \| URL)   | last message described; older stripped |
-| `*anthropic.MessageNewParams`              | `ImageBlockParam.Source` (Base64 \| URL)       | last message described; older stripped |
-| `*openai.ChatCompletionNewParams`          | `user.content[].OfImageURL.ImageURL.URL`       | last message described; older stripped |
-| `*responses.ResponseNewParams`             | `input[].content[].OfInputImage`               | last item described; older stripped    |
+| `*anthropic.BetaMessageNewParams`          | `BetaImageBlockParam.Source` (Base64 \| URL)   | latest user message described; older stripped |
+| `*anthropic.MessageNewParams`              | `ImageBlockParam.Source` (Base64 \| URL)       | latest user message described; older stripped |
+| `*openai.ChatCompletionNewParams`          | `user.content[].OfImageURL.ImageURL.URL`       | latest user/tool message described; older stripped |
+| `*responses.ResponseNewParams`             | `input[].content[].OfInputImage`               | latest user item described; older stripped    |
+
+`lastIdx` is the index of the latest message that can carry an image from the
+caller — **not** simply `len(messages)-1`. Clients append trailing messages
+that are not part of the turn: Claude Code emits a `<system-reminder>` as its
+own system-role message after every tool result, so the request answering a
+tool call arrives as `user / system / assistant(tool_use) /
+user(tool_result+image) / system`. Anchoring on the final message would make
+the image of the turn in flight test as history and replace it with the
+`omitted from history` marker, so the caller would answer about an image no
+model ever saw. See `latestImageAnchor`.
 
 Images nested inside `tool_result` content blocks are also walked (Beta and
 v1 shapes) — tool-returning agents (screenshot / read-image / MCP tools)
