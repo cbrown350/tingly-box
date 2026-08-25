@@ -300,18 +300,25 @@ func collectV1(req *anthropic.MessageNewParams) []imageRef {
 	return refs
 }
 
-// collectOpenAI walks a Chat Completions request. Only user messages can
-// carry image_url content parts in the current SDK union.
+// collectOpenAI walks a Chat Completions request. Image parts ride in user
+// messages and — since the fork widened tool-result content from text-only to
+// the full part union (#1609) — in tool messages too. Missing the tool channel
+// leaves the image to be forwarded verbatim, which text-only providers reject
+// outright (z.ai code 1210) instead of describing.
 func collectOpenAI(req *openai.ChatCompletionNewParams) []imageRef {
 	var refs []imageRef
 	lastIdx := len(req.Messages) - 1
 	for mi := range req.Messages {
-		um := req.Messages[mi].OfUser
-		if um == nil {
+		var parts []openai.ChatCompletionContentPartUnionParam
+		switch {
+		case req.Messages[mi].OfUser != nil:
+			parts = req.Messages[mi].OfUser.Content.OfArrayOfContentParts
+		case req.Messages[mi].OfTool != nil:
+			parts = req.Messages[mi].OfTool.Content.OfArrayOfContentParts
+		default:
 			continue
 		}
 		isLast := mi == lastIdx
-		parts := um.Content.OfArrayOfContentParts
 		for pi := range parts {
 			ip := parts[pi].OfImageURL
 			if ip == nil {

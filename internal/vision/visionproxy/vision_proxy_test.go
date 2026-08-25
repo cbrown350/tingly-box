@@ -295,6 +295,48 @@ func responsesReqWithItems(items ...responses.ResponseInputItemUnionParam) *resp
 // countImages returns the number of remaining image blocks across all
 // supported request shapes; -1 for unsupported. Images inside tool_result
 // blocks count too — that path is part of the proxy contract.
+// openAIMessageParts returns the content parts of a chat message regardless of
+// role. Deliberately independent of collectOpenAI so the tests do not inherit
+// the very omission they are meant to catch.
+func openAIMessageParts(m openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionContentPartUnionParam {
+	switch {
+	case m.OfUser != nil:
+		return m.OfUser.Content.OfArrayOfContentParts
+	case m.OfTool != nil:
+		return m.OfTool.Content.OfArrayOfContentParts
+	}
+	return nil
+}
+
+// openaiReqWithToolImage models an agent handing a screenshot back through the
+// tool channel — the shape from issue #1606.
+func openaiReqWithToolImage(prompt, b64 string) *openai.ChatCompletionNewParams {
+	dataURL := "data:" + tinyPNGMediaType + ";base64," + b64
+	return &openai.ChatCompletionNewParams{
+		Model: openai.ChatModel("gpt-4o"),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.ChatCompletionUserMessageParamContentUnion{
+					OfArrayOfContentParts: []openai.ChatCompletionContentPartUnionParam{
+						{OfText: &openai.ChatCompletionContentPartTextParam{Text: "take a screenshot"}},
+					},
+				},
+			}},
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				ToolCallID: "call_1",
+				Content: openai.ChatCompletionToolMessageParamContentUnion{
+					OfArrayOfContentParts: []openai.ChatCompletionContentPartUnionParam{
+						{OfText: &openai.ChatCompletionContentPartTextParam{Text: prompt}},
+						{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+							ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: dataURL},
+						}},
+					},
+				},
+			}},
+		},
+	}
+}
+
 func countImages(req any) int {
 	switch r := req.(type) {
 	case *anthropic.BetaMessageNewParams:
@@ -334,10 +376,7 @@ func countImages(req any) int {
 	case *openai.ChatCompletionNewParams:
 		n := 0
 		for _, m := range r.Messages {
-			if m.OfUser == nil {
-				continue
-			}
-			for _, p := range m.OfUser.Content.OfArrayOfContentParts {
+			for _, p := range openAIMessageParts(m) {
 				if p.OfImageURL != nil {
 					n++
 				}
@@ -408,10 +447,7 @@ func collectText(req any) string {
 		}
 	case *openai.ChatCompletionNewParams:
 		for _, m := range r.Messages {
-			if m.OfUser == nil {
-				continue
-			}
-			for _, p := range m.OfUser.Content.OfArrayOfContentParts {
+			for _, p := range openAIMessageParts(m) {
 				if p.OfText != nil {
 					out += p.OfText.Text + "\n"
 				}
@@ -480,6 +516,23 @@ func TestVisionProxy_OpenAI_Success(t *testing.T) {
 	require.NoError(t, p.Process(context.Background(), req, svcs))
 	require.Equal(t, 0, countImages(req))
 	require.Contains(t, collectText(req), "a cat sitting on a mat")
+}
+
+// Tool messages carry images since the fork widened tool-result content to the
+// full part union (#1609). The visionproxy must describe those too: text-only
+// providers reject them outright (z.ai code 1210, "messages.content.type is
+// invalid, allowed values: ['text']").
+func TestVisionProxy_OpenAI_ToolMessageImage_Replaced(t *testing.T) {
+	prov := mkProvider("openai-vision")
+	fake := newFakeVisionClient("a solid red square")
+	p := mkProcessor(t, fake, prov)
+
+	req := openaiReqWithToolImage("what color is this?", tinyPNGBase64)
+	svcs := []*loadbalance.Service{mkService(prov.UUID, true)}
+
+	require.NoError(t, p.Process(context.Background(), req, svcs))
+	require.Equal(t, 0, countImages(req), "tool-channel image must not reach the provider")
+	require.Contains(t, collectText(req), "a solid red square")
 }
 
 func TestVisionProxy_VisionCallError_StripImageWithUnavailableMarker(t *testing.T) {
