@@ -95,10 +95,10 @@ RUN groupadd -r tingly && \
 RUN npm install -g npm@10.8.2
 RUN npm install -g pm2@7.0.1
 
-# The binary is statically linked against musl in the builder, so it runs on
-# glibc-based Debian unchanged. Named `tingly-box` because derived entrypoints
-# invoke it by that name.
-COPY --from=builder /app/build/tingly-box /usr/local/bin/tingly-box
+# The builder's last step renames the binary to /app/tingly. It is statically
+# linked against musl, so it runs on glibc-based Debian unchanged. Installed
+# here as `tingly-box`, the name derived entrypoints invoke.
+COPY --from=builder /app/tingly /usr/local/bin/tingly-box
 RUN chmod 755 /usr/local/bin/tingly-box
 
 # Grant tingly user access to npm global directories and cache
