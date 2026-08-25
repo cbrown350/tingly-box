@@ -84,6 +84,17 @@ func visionMaxTokens() int64 {
 	return defaultVisionMaxTokens
 }
 
+// warnTruncatedDescription reports a description the model was still writing
+// when it hit the cap. Unlike the empty case this is not an error — a partial
+// description still beats stripping the image — but it is a silent downgrade
+// of the caller's input, so it must not pass unremarked.
+func warnTruncatedDescription(model string, budget int64, text string) {
+	logrus.Warnf(
+		"vision adapter: model %q hit the %d-token cap mid-description; "+
+			"the image was described from a truncated answer (%d chars). Raise %s",
+		model, budget, len(text), visionMaxTokensEnv)
+}
+
 // errTruncatedBeforeContent reports the specific failure where the model hit
 // the token cap without emitting any content. It is distinct from a genuinely
 // empty answer: the caller strips the image either way, but only this one is
@@ -184,6 +195,9 @@ func (a *poolVisionClient) describeViaAnthropic(ctx context.Context, provider *t
 		}
 	}
 	if text := strings.TrimSpace(sb.String()); text != "" {
+		if msg.StopReason == anthropic.BetaStopReasonMaxTokens {
+			warnTruncatedDescription(model, budget, text)
+		}
 		return text, nil
 	}
 	if msg.StopReason == anthropic.BetaStopReasonMaxTokens {
@@ -243,6 +257,9 @@ func (a *poolVisionClient) describeViaOpenAI(ctx context.Context, provider *typ.
 	truncated := false
 	for _, ch := range resp.Choices {
 		if text := strings.TrimSpace(ch.Message.Content); text != "" {
+			if ch.FinishReason == "length" {
+				warnTruncatedDescription(model, budget, text)
+			}
 			logrus.Debugf("openai: image description: %s", text)
 			return text, nil
 		}
