@@ -1,6 +1,6 @@
 # Multi-stage build for Tingly Box
 # Stage 1: Build
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install git, nodejs, npm, pnpm, gcc (for CGO), and other build dependencies
 RUN apk add --no-cache git nodejs npm ca-certificates tzdata curl jq gcc musl-dev
@@ -38,6 +38,19 @@ RUN if [ ! -f libs/go-genai/go.mod ]; then \
 
 # Download dependencies (must be after source copy due to local replace directive)
 RUN go mod download
+
+# Build the web UI before the binary. internal/server/webui_handler.go serves
+# the dashboard from the embedded internal/web/dist; without this step the
+# binary compiles fine and then returns HTTP 500 for every UI route.
+# Mirrors Taskfile's web:build, minus the swagger regeneration — openapi.json
+# is committed, so gen:api needs no Go tooling.
+RUN cd frontend && \
+    pnpm install --no-frozen-lockfile && \
+    pnpm gen:api && \
+    pnpm build && \
+    cd .. && \
+    mkdir -p internal/web/dist && \
+    cp -R frontend/dist/* internal/web/dist/
 
 # Build with static linking for SQLite (musl)
 RUN CGO_ENABLED=1 \
