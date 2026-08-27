@@ -40,30 +40,30 @@ func TestAnthropicBetaFlags(t *testing.T) {
 	}
 }
 
-func TestRemapToolNames(t *testing.T) {
+func TestRemapRequestToolNames(t *testing.T) {
 	t.Run("renames bash to Bash in OfTool", func(t *testing.T) {
-		tools := []anthropic.ToolUnionParam{
+		req := &anthropic.MessageNewParams{Tools: []anthropic.ToolUnionParam{
 			{OfTool: &anthropic.ToolParam{Name: "bash"}},
-		}
-		rev := remapToolNames(tools)
-		assert.Equal(t, "Bash", tools[0].OfTool.Name)
+		}}
+		rev := remapRequestToolNames(req)
+		assert.Equal(t, "Bash", req.Tools[0].OfTool.Name)
 		assert.Equal(t, map[string]string{"Bash": "bash"}, rev)
 	})
 
 	t.Run("skips built-in tools (OfTool is nil)", func(t *testing.T) {
-		tools := []anthropic.ToolUnionParam{
+		req := &anthropic.MessageNewParams{Tools: []anthropic.ToolUnionParam{
 			{OfBashTool20250124: &anthropic.ToolBash20250124Param{}},
-		}
-		rev := remapToolNames(tools)
+		}}
+		rev := remapRequestToolNames(req)
 		assert.Empty(t, rev)
 	})
 
 	t.Run("already TitleCase — no rename", func(t *testing.T) {
-		tools := []anthropic.ToolUnionParam{
+		req := &anthropic.MessageNewParams{Tools: []anthropic.ToolUnionParam{
 			{OfTool: &anthropic.ToolParam{Name: "Bash"}},
-		}
-		rev := remapToolNames(tools)
-		assert.Equal(t, "Bash", tools[0].OfTool.Name)
+		}}
+		rev := remapRequestToolNames(req)
+		assert.Equal(t, "Bash", req.Tools[0].OfTool.Name)
 		assert.Empty(t, rev)
 	})
 
@@ -71,12 +71,16 @@ func TestRemapToolNames(t *testing.T) {
 		// Anthropic's OAuth path rejects requests carrying many snake_case
 		// tool names, so unknown tools are folded too — not just the
 		// well-known Claude Code ones.
-		tools := []anthropic.ToolUnionParam{
+		req := &anthropic.MessageNewParams{Tools: []anthropic.ToolUnionParam{
 			{OfTool: &anthropic.ToolParam{Name: "my_custom_tool"}},
-		}
-		rev := remapToolNames(tools)
-		assert.Equal(t, "MyCustomTool", tools[0].OfTool.Name)
+		}}
+		rev := remapRequestToolNames(req)
+		assert.Equal(t, "MyCustomTool", req.Tools[0].OfTool.Name)
 		assert.Equal(t, map[string]string{"MyCustomTool": "my_custom_tool"}, rev)
+	})
+
+	t.Run("nil request", func(t *testing.T) {
+		assert.Nil(t, remapRequestToolNames(nil))
 	})
 }
 

@@ -130,33 +130,33 @@ func TestClaudeClient_ListModels_UsesUpstream(t *testing.T) {
 }
 
 // ===================================================================
-// remapBetaToolNames
+// remapBetaRequestToolNames
 // ===================================================================
 
-func TestRemapBetaToolNames(t *testing.T) {
+func TestRemapBetaRequestToolNames(t *testing.T) {
 	t.Run("renames bash to Bash in OfTool", func(t *testing.T) {
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfTool: &anthropic.BetaToolParam{Name: "bash"}},
-		}
-		rev := remapBetaToolNames(tools)
-		assert.Equal(t, "Bash", tools[0].OfTool.Name)
+		}}
+		rev := remapBetaRequestToolNames(req)
+		assert.Equal(t, "Bash", req.Tools[0].OfTool.Name)
 		assert.Equal(t, map[string]string{"Bash": "bash"}, rev)
 	})
 
 	t.Run("skips built-in tools (OfTool is nil)", func(t *testing.T) {
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfBashTool20250124: &anthropic.BetaToolBash20250124Param{}},
-		}
-		rev := remapBetaToolNames(tools)
+		}}
+		rev := remapBetaRequestToolNames(req)
 		assert.Empty(t, rev)
 	})
 
 	t.Run("already TitleCase — no rename", func(t *testing.T) {
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfTool: &anthropic.BetaToolParam{Name: "Bash"}},
-		}
-		rev := remapBetaToolNames(tools)
-		assert.Equal(t, "Bash", tools[0].OfTool.Name)
+		}}
+		rev := remapBetaRequestToolNames(req)
+		assert.Equal(t, "Bash", req.Tools[0].OfTool.Name)
 		assert.Empty(t, rev)
 	})
 
@@ -164,39 +164,43 @@ func TestRemapBetaToolNames(t *testing.T) {
 		// Anthropic's OAuth path rejects requests carrying many snake_case
 		// tool names, so unknown tools are folded too — not just the
 		// well-known Claude Code ones.
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfTool: &anthropic.BetaToolParam{Name: "my_custom_tool"}},
-		}
-		rev := remapBetaToolNames(tools)
-		assert.Equal(t, "MyCustomTool", tools[0].OfTool.Name)
+		}}
+		rev := remapBetaRequestToolNames(req)
+		assert.Equal(t, "MyCustomTool", req.Tools[0].OfTool.Name)
 		assert.Equal(t, map[string]string{"MyCustomTool": "my_custom_tool"}, rev)
 	})
 
 	t.Run("multiple tools — known names keep official spelling", func(t *testing.T) {
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfTool: &anthropic.BetaToolParam{Name: "read"}},
 			{OfTool: &anthropic.BetaToolParam{Name: "my_tool"}},
 			{OfTool: &anthropic.BetaToolParam{Name: "ls"}},
-		}
-		rev := remapBetaToolNames(tools)
-		assert.Equal(t, "Read", tools[0].OfTool.Name)
-		assert.Equal(t, "MyTool", tools[1].OfTool.Name)
+		}}
+		rev := remapBetaRequestToolNames(req)
+		assert.Equal(t, "Read", req.Tools[0].OfTool.Name)
+		assert.Equal(t, "MyTool", req.Tools[1].OfTool.Name)
 		// "ls" comes from the map as "LS", not the mechanical "Ls".
-		assert.Equal(t, "LS", tools[2].OfTool.Name)
+		assert.Equal(t, "LS", req.Tools[2].OfTool.Name)
 		assert.Equal(t, map[string]string{"Read": "read", "MyTool": "my_tool", "LS": "ls"}, rev)
 	})
 
 	t.Run("collision — both left alone", func(t *testing.T) {
 		// Renaming would make the reverse map ambiguous, which could
 		// dispatch a tool result to the wrong tool.
-		tools := []anthropic.BetaToolUnionParam{
+		req := &anthropic.BetaMessageNewParams{Tools: []anthropic.BetaToolUnionParam{
 			{OfTool: &anthropic.BetaToolParam{Name: "my_tool"}},
 			{OfTool: &anthropic.BetaToolParam{Name: "MyTool"}},
-		}
-		rev := remapBetaToolNames(tools)
-		assert.Equal(t, "my_tool", tools[0].OfTool.Name)
-		assert.Equal(t, "MyTool", tools[1].OfTool.Name)
+		}}
+		rev := remapBetaRequestToolNames(req)
+		assert.Equal(t, "my_tool", req.Tools[0].OfTool.Name)
+		assert.Equal(t, "MyTool", req.Tools[1].OfTool.Name)
 		assert.Empty(t, rev)
+	})
+
+	t.Run("nil request", func(t *testing.T) {
+		assert.Nil(t, remapBetaRequestToolNames(nil))
 	})
 }
 

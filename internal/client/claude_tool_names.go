@@ -12,10 +12,20 @@ import (
 	anthropicOption "github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// mcpToolPrefix marks MCP-provided tools. Claude Code keeps the prefix intact
-// and only capitalizes the first character of the remainder, so we match that
-// rather than folding the whole name.
-const mcpToolPrefix = "mcp_"
+// mcpNamespaceSeparator separates the segments of an MCP tool name.
+//
+// Claude Code passes MCP tools through verbatim as mcp__<server>__<tool> —
+// lowercase, unfolded — so a name already using this separator is left alone.
+// Folding it would move the request away from real Claude Code traffic rather
+// than towards it, and would flatten the namespace the client uses to route the
+// call. Tingly-Box's own server tools follow the same convention
+// (tingly_box_mcp__<source>__<tool>, see internal/tool.NormalizeToolName), so
+// one rule covers both.
+//
+// A single-underscore "mcp_" prefix is deliberately *not* treated as a
+// namespace: it is not a shape any first-party client emits, so it folds like
+// any other snake_case name.
+const mcpNamespaceSeparator = "__"
 
 // claudeCodeToolName returns the name Claude Code would send for a tool.
 //
@@ -27,10 +37,14 @@ const mcpToolPrefix = "mcp_"
 // fail while the same request with TitleCased names succeeds; the check is a
 // casing heuristic, not an allowlist of known Claude Code tools.
 //
-// oauthToolRenameMap still wins for the well-known Claude Code tools so those
+// MCP-namespaced names are exempt — see mcpNamespaceSeparator.
+// oauthToolRenameMap then wins for the well-known Claude Code tools so those
 // keep their exact official spelling (e.g. "ls" -> "LS", not "Ls"). Everything
 // else falls back to a mechanical TitleCase.
 func claudeCodeToolName(name string) string {
+	if strings.Contains(name, mcpNamespaceSeparator) {
+		return name
+	}
 	if mapped, ok := oauthToolRenameMap[name]; ok {
 		return mapped
 	}
@@ -42,12 +56,6 @@ func claudeCodeToolName(name string) string {
 func titleCaseToolName(name string) string {
 	if name == "" {
 		return name
-	}
-	if rest, ok := strings.CutPrefix(name, mcpToolPrefix); ok {
-		if rest == "" {
-			return name
-		}
-		return mcpToolPrefix + upperFirst(rest)
 	}
 	var b strings.Builder
 	b.Grow(len(name))
